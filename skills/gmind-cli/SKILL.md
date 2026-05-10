@@ -42,16 +42,17 @@ GMind types are NOT just labels. They define the **role** of a page in the knowl
 ```
 L0 原始素材 (Raw input)          L1 提炼实体 (Entity档案)        L2 整合输出 (Output)
 ─────────────────────           ─────────────────────          ─────────────────
-source  ───┐                      person   (人物档案)  ───→    synthesis (综合总结)
-note   ────┼──→  提炼、聚合  →    company  (公司档案)  ───→    project   (项目跟踪)
-           │                      product  (产品档案)
-           └─→                    concept  (概念档案)
+source   ───┐                     person   (人物档案)  ───→    synthesis (综合总结)
+note    ────┼──→  提炼、聚合  →   company  (公司档案)  ───→    project   (项目跟踪)
+capture ────┘                     product  (产品档案)
+                                  concept  (概念档案)
 ```
 
 | Layer | Type | Role | Example |
 |-------|------|------|---------|
-| **L0 素材** | `source` | 从外部获取的原始资料（书、文章、网页） | "Tesla Q3 财报原文" |
-| **L0 素材** | `note` | 自己的随手记录、想法 | "读财报的一些思考" |
+| **L0 素材** | `source` | 人工收集的外部资料（书、文章、网页、PDF） | "Tesla Q3 财报原文" |
+| **L0 素材** | `note` | 人的随手记录、想法、草稿 | "读财报的一些思考" |
+| **L0 素材** | `capture` | 自动工具采集的原始转录（会话、日志、系统输出） | "hermes-session-20260510" |
 | **L1 实体** | `person` | 人物档案，聚合所有关于这个人的 source | "Elon Musk" ← 被多个 source 链接 |
 | **L1 实体** | `company` | 公司档案，聚合所有关于这家公司的 source | "Tesla" ← 被多个 source 链接 |
 | **L1 实体** | `product` | 产品/工具档案 | "PostgreSQL" |
@@ -190,6 +191,7 @@ gmind init [--node <name>]
 2. **Reference existing pages** with `[[slug]]` syntax (English slug, not title)
 3. **Follow the three-layer flow**:
    - External material → `source` (record what you read)
+   - Auto-captured content → `capture` (session logs, tool output, API dumps)
    - Extract entities from source → `person`/`company`/`product`/`concept` (create/update档案)
    - Source pages should LINK TO entity pages: "Tesla's CEO is [[elon-musk]]"
    - Synthesize multiple sources → `synthesis` or `project`
