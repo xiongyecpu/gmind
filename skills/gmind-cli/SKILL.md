@@ -35,15 +35,33 @@ gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--sourc
 - `--source`: Mandatory for agent writes. Format: `agent-name:session-id`
 - `--on-duplicate`: `[a]ppend` / `[o]verwrite` / `[i]gnore`. Use in non-interactive mode.
 
-**Type rules**:
-- People → `--type person`
-- Companies/orgs → `--type company`
-- Products/tools → `--type product`
-- Projects/systems → `--type project`
-- Concepts/knowledge → `--type concept`
-- Sources/refs → `--type source`
-- General notes → `--type note` (default)
-- Use `--type entity` only when unsure (legacy fallback)
+**Type system — Three-layer model**:
+
+GMind types are NOT just labels. They define the **role** of a page in the knowledge graph:
+
+```
+L0 原始素材 (Raw input)          L1 提炼实体 (Entity档案)        L2 整合输出 (Output)
+─────────────────────           ─────────────────────          ─────────────────
+source  ───┐                      person   (人物档案)  ───→    synthesis (综合总结)
+note   ────┼──→  提炼、聚合  →    company  (公司档案)  ───→    project   (项目跟踪)
+           │                      product  (产品档案)
+           └─→                    concept  (概念档案)
+```
+
+| Layer | Type | Role | Example |
+|-------|------|------|---------|
+| **L0 素材** | `source` | 从外部获取的原始资料（书、文章、网页） | "Tesla Q3 财报原文" |
+| **L0 素材** | `note` | 自己的随手记录、想法 | "读财报的一些思考" |
+| **L1 实体** | `person` | 人物档案，聚合所有关于这个人的 source | "Elon Musk" ← 被多个 source 链接 |
+| **L1 实体** | `company` | 公司档案，聚合所有关于这家公司的 source | "Tesla" ← 被多个 source 链接 |
+| **L1 实体** | `product` | 产品/工具档案 | "PostgreSQL" |
+| **L1 实体** | `concept` | 概念/知识点档案 | "向量数据库" |
+| **L2 输出** | `synthesis` | 综合多篇素材的总结 | "2024 AI 年度回顾" |
+| **L2 输出** | `project` | 正在进行的项目/工作跟踪 | "GMind 开发" |
+| — | `query` | 查询/问答记录 | "为什么 PG 比 MySQL 好" |
+| — | `entity` | 未分类实体（legacy fallback） | — |
+
+**Critical**: L1 entity pages are **档案中心** — they are linked TO by multiple L0 source pages. A `person` page like `[[elon-musk]]` should contain a summary of who he is and list key facts, while individual sources (articles, tweets) about him link to `[[elon-musk]]`.
 
 **Deduplication**: Similarity > 0.92 triggers merge prompt. In non-interactive mode, default is append.
 
@@ -170,8 +188,13 @@ gmind init [--node <name>]
 
 1. **Always include `--source`** for agent-initiated writes
 2. **Reference existing pages** with `[[slug]]` syntax (English slug, not title)
-3. **Use specific types**: `person` for people, `company` for orgs, `product` for tools
-4. **Prefer append over overwrite** when deduplication fires
+3. **Follow the three-layer flow**:
+   - External material → `source` (record what you read)
+   - Extract entities from source → `person`/`company`/`product`/`concept` (create/update档案)
+   - Source pages should LINK TO entity pages: "Tesla's CEO is [[elon-musk]]"
+   - Synthesize multiple sources → `synthesis` or `project`
+4. **Entity pages are档案 centers** — keep them updated with latest facts from new sources
+5. **Prefer append over overwrite** when deduplication fires
 
 ## Prohibited Actions
 
