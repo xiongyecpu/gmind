@@ -116,6 +116,8 @@ gmind init [--node <name>]
 | `add` | Add notes with auto-embedding and dedup |
 | `search` | Vector similarity search, JSON output (agent-friendly) |
 | `query` | Semantic search + LLM summary (human-friendly) |
+| `stats` | Knowledge base dashboard |
+| `ingest` | Batch import .md/.txt/.pdf |
 | `sync` | Publish drafts, detect conflicts |
 | `merge` | Manual conflict resolution with version history |
 
