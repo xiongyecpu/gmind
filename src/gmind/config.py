@@ -16,7 +16,7 @@ class Config:
     database_url: str
     node_name: str = "default"
     embedding_api_key: str = ""
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
     embedding_base_url: str = "https://api.siliconflow.cn/v1"
 
 
