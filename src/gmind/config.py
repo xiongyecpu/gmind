@@ -18,9 +18,6 @@ class Config:
     embedding_api_key: str = ""
     embedding_model: str = "BAAI/bge-m3"
     embedding_base_url: str = "https://api.siliconflow.cn/v1"
-    llm_api_key: str = ""
-    llm_base_url: str = "https://api.siliconflow.cn/v1"
-    llm_model: str = "deepseek-ai/DeepSeek-V3"
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -39,9 +36,6 @@ def load_config(path: Path | None = None) -> Config:
         embedding_base_url=data.get(
             "embedding_base_url", "https://api.siliconflow.cn/v1"
         ),
-        llm_api_key=data.get("llm_api_key", ""),
-        llm_base_url=data.get("llm_base_url", "https://api.siliconflow.cn/v1"),
-        llm_model=data.get("llm_model", "deepseek-ai/DeepSeek-V3"),
     )
 
 
@@ -54,9 +48,6 @@ def save_config(cfg: Config, path: Path | None = None) -> None:
         f'embedding_api_key = "{cfg.embedding_api_key}"',
         f'embedding_model = "{cfg.embedding_model}"',
         f'embedding_base_url = "{cfg.embedding_base_url}"',
-        f'llm_api_key = "{cfg.llm_api_key}"',
-        f'llm_base_url = "{cfg.llm_base_url}"',
-        f'llm_model = "{cfg.llm_model}"',
     ]
     cfg_path.write_text("\n".join(lines) + "\n")
     os.chmod(cfg_path, stat.S_IRUSR | stat.S_IWUSR)

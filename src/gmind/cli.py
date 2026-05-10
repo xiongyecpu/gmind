@@ -23,20 +23,11 @@ def init(
     embedding_api_key = typer.prompt("Embedding API key (SiliconFlow)", hide_input=True)
     embedding_model = typer.prompt("Embedding model", default="BAAI/bge-m3")
 
-    use_llm = typer.confirm("Configure LLM for query/summary? (optional)", default=False)
-    llm_api_key = ""
-    llm_model = "deepseek-ai/DeepSeek-V3"
-    if use_llm:
-        llm_api_key = typer.prompt("LLM API key (SiliconFlow)", hide_input=True)
-        llm_model = typer.prompt("LLM model", default="deepseek-ai/DeepSeek-V3")
-
     cfg = config.Config(
         database_url=database_url,
         node_name=node,
         embedding_api_key=embedding_api_key,
         embedding_model=embedding_model,
-        llm_api_key=llm_api_key,
-        llm_model=llm_model,
     )
     config.save_config(cfg)
     typer.echo(f"✅ Config saved to {config.DEFAULT_CONFIG_PATH}")
@@ -80,7 +71,7 @@ def query_cmd(
     question: list[str] = ARG_QUESTION,
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
 ) -> None:
-    """Query with semantic search + LLM summary (requires LLM config)."""
+    """Query with semantic search (retrieval only, no LLM summary)."""
     text = " ".join(question)
     query.run_query(text, top_k=top_k)
 
@@ -88,10 +79,9 @@ def query_cmd(
 @app.command(name="sync")
 def sync_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
-    auto_merge: bool = typer.Option(False, "--auto-merge", help="Auto-merge conflicts via LLM"),
 ) -> None:
     """Sync local drafts to published state."""
-    sync.run_sync(dry_run=dry_run, auto_merge=auto_merge)
+    sync.run_sync(dry_run=dry_run)
 
 
 @app.command(name="stats")

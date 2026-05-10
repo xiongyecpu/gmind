@@ -5,11 +5,21 @@ description: "Interact with the GMind knowledge base via CLI. Use when the user 
 
 # GMind CLI Skill
 
-GMind is a personal knowledge base backed by PostgreSQL + pgvector. It supports semantic search, automatic deduplication, and multi-node sync.
+GMind is a personal knowledge base backed by PostgreSQL + pgvector. It stores notes, performs vector search, and manages multi-node sync. **It does NOT call LLMs** -- reasoning and synthesis are the agent's job.
+
+## Agent vs GMind: Responsibility Split
+
+| Task | Who Does It |
+|------|-------------|
+| Store, retrieve, sync, export | **GMind CLI** |
+| Generate embeddings | **GMind CLI** (calls embedding API) |
+| Reason, summarize, answer | **You (the agent)** |
+| Merge conflict judgment | **You (the agent)** |
+| Extract title/summary from files | **You (the agent)** or simple heuristics |
 
 ## Binary Location
 
-`~/.local/bin/gmind` — linked to the project venv. If not in PATH, use full path.
+`~/.local/bin/gmind`
 
 ## Core Commands
 
@@ -29,40 +39,38 @@ gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--sourc
 
 **Deduplication**: Similarity > 0.92 triggers merge prompt. In non-interactive mode, default is append.
 
-**File import**: Use `$(cat '/path/to/file.md')` to pipe file contents into add.
-
-### Search (preferred for agents)
+### Search (primary retrieval command)
 
 ```bash
 gmind search "<keyword>" [--top-k <n>] [--json]
 ```
 
 - Pure vector semantic search, **no LLM call**
-- `--json`: JSON output for agent consumption (saves tokens)
+- `--json`: JSON output for agent consumption
 - Default top-k is 5
 - Returns: slug, title, content, type, similarity
 
-**Agent workflow**: Use `gmind search --json` to retrieve relevant notes, then use your own reasoning to answer or synthesize. Do NOT use `gmind query` (it calls an external LLM and wastes tokens).
+**Critical rule**: After receiving search results from gmind, **do NOT dump raw JSON or text directly to the user**. You must first read and understand the retrieved content, then use your own reasoning to synthesize a coherent, human-friendly answer. Cite sources using `[[slug]]` format.
 
-### Query (semantic search + LLM summary)
+### Query (retrieval only)
 
 ```bash
 gmind query "<question>" [--top-k <n>]
 ```
 
-- Performs vector semantic search + LLM summarization
-- Requires LLM API key configured
-- Default top-k is 5
-- Returns answer with cited sources in `[[slug]]` format
+- Same as `search` but with human-readable formatted output
+- **Does NOT call LLM**. Just shows retrieved chunks.
+- **Critical rule**: Even with formatted output, do NOT echo gmind's raw results directly to the user. Read, understand, and rephrase with your own reasoning.
+- For agent use, prefer `search --json` (saves tokens).
 
-### Stats (knowledge base overview)
+### Stats
 
 ```bash
 gmind stats
 ```
 
 - Pages total / by type / embedding coverage
-- Orphan pages (no edges) / graph edges count
+- Orphan pages / graph edges count
 - Recent 7-day writes / last sync / pending merges
 
 ### Ingest (batch import)
@@ -73,36 +81,35 @@ gmind ingest <file-or-dir> [--recursive] [--source <ref>]
 
 - Supports `.md`, `.txt`, `.pdf`
 - PDF text extraction via pdfplumber
-- LLM extracts title, summary, page_type automatically
-- Falls back to heuristics if no LLM key configured
+- Uses simple heuristics for title extraction (first line / filename)
+- **Does NOT call LLM** for extraction
 - Batch-safe: auto-append on duplicate
 
-### Sync (publish drafts)
+### Sync
 
 ```bash
-gmind sync [--dry-run] [--auto-merge]
+gmind sync [--dry-run]
 ```
 
 - Scans local `draft` pages and promotes them to `published`
 - Auto-detects conflicts (same slug, different checksum)
 - Conflicts are marked `merge_review`; snapshots saved to `page_history`
 - `--dry-run`: previews without touching data
-- `--auto-merge`: uses LLM to auto-merge conflicts (requires LLM key)
 - **Agent workflow**: After `gmind sync`, check for `merge_review` pages. Use `gmind search` to read both versions, then use your own reasoning to merge and write the result back via `gmind add`.
 
-### Graph (knowledge graph)
+### Graph
 
 ```bash
-gmind graph <slug> [--depth <n>]        # explore page connections
-gmind graph --orphans                   # pages with no links
-gmind graph --hubs                      # most connected pages
-gmind graph --rebuild                   # extract [[link]] edges from all pages
+gmind graph <slug> [--depth <n>]
+gmind graph --orphans
+gmind graph --hubs
+gmind graph --rebuild
 ```
 
 - Parses `[[slug]]` and `[[slug|title]]` syntax in page content
 - `--rebuild` scans entire database and populates edges table
 
-### Lint (health check)
+### Lint
 
 ```bash
 gmind lint
@@ -110,24 +117,21 @@ gmind lint
 
 - Checks: orphan pages, broken [[links]], merge_review pending, missing embeddings
 
-### Export (backup)
+### Export
 
 ```bash
 gmind export <output-dir>
 ```
 
 - Exports all pages to `.md` files with YAML frontmatter
-- Preserves slug directory structure
 
-### Merge (resolve conflicts)
+### Merge
 
 ```bash
 gmind merge <slug> [--list] [--pick <version>] [--edit]
 ```
 
-- `--list`: Show history versions for a page
-- `--pick <version>`: Revert to a specific version
-- `--edit`: Open $EDITOR to manually resolve
+- Manual conflict resolution with version history
 
 ### Init
 
@@ -136,6 +140,7 @@ gmind init [--node <name>]
 ```
 
 - Initialize gmind configuration and database connection
+- Only asks for: database URL, embedding API key, embedding model
 
 ## Implemented Commands
 
@@ -144,7 +149,7 @@ gmind init [--node <name>]
 | `init` | Initialize config and database |
 | `add` | Add notes with auto-embedding and dedup |
 | `search` | Vector similarity search, JSON output (agent-friendly) |
-| `query` | Semantic search + LLM summary (human-friendly) |
+| `query` | Semantic search, formatted output (human-friendly) |
 | `stats` | Knowledge base dashboard |
 | `ingest` | Batch import .md/.txt/.pdf |
 | `sync` | Publish drafts, detect conflicts |
@@ -165,21 +170,32 @@ gmind init [--node <name>]
 - ❌ Do not call `gmind sync` unless explicitly asked
 - ❌ Do not delete or overwrite existing pages without user confirmation
 - ❌ Do not ingest more than 10 files in one batch without confirmation
-- ❌ Do not call `gmind query` repeatedly for the same question
+- ❌ Do not call `gmind query` or `gmind search` repeatedly for the same question
 
 ## Agent Design Principles
 
 - **You ARE the LLM**: GMind does not call LLMs. Use `gmind search --json` to retrieve data, then synthesize answers yourself.
+- **NEVER echo raw gmind output**: Whether JSON from `search` or formatted text from `query`, always read, understand, and rephrase with your own reasoning before responding to the user.
 - **You ARE the merge engine**: When `gmind sync` produces `merge_review` pages, read both versions via search, merge them using your own judgment, then write back.
 - **GMind is your memory, not your brain**: It stores and retrieves. Reasoning, summarization, and merging are your job.
+
+## CRITICAL: Never dump raw results to the user
+
+After calling `gmind search --json` or `gmind query`, you have raw retrieval data. **Your job is to read it and compose a natural, synthesized answer for the user.**
+
+❌ **Wrong**: Pasting the JSON array, CLI output, or numbered similarity list directly into the response. The user did not ask for database dump.
+
+✅ **Right**: Parse the results internally, synthesize the answer in your own words, cite sources with `[[slug]]` where relevant. Present it as a normal conversational answer.
+
+Think of it as: gmind is your memory retrieval, not the user's. You query your memory, then answer the question. The user should never see the underlying SQL/JSON any more than they should see your neural activations.
 
 ## Roadmap Status
 
 | Phase | Status | Commands |
 |-------|--------|----------|
-| P0 Core | ✅ Done | init, add, search, query |
-| P1 Sync | ✅ Done | sync, merge |
-| P2 Ingest | ✅ Done | ingest (files/PDF) |
-| P4 Stats | ✅ Done | stats |
-| P3 Graph | ✅ Done | graph, link extraction |
-| P4 Maintenance | ✅ Done | lint, stats, export |
+| P0 Core | Done | init, add, search, query |
+| P1 Sync | Done | sync, merge |
+| P2 Ingest | Done | ingest |
+| P3 Graph | Done | graph |
+| P4 Maintenance | Done | stats, lint, export |
+| P5 Open Source | Done | docs, CI |

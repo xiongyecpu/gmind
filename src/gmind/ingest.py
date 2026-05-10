@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import json
-import re
 from pathlib import Path
 
 import typer
 
-from gmind import add, config, db, llm, utils
-
-MAX_LLM_CHARS = 8000
+from gmind import add, config, db, utils
 
 
 def run_ingest(
@@ -56,32 +52,22 @@ def run_ingest(
 def _ingest_file(file_path: Path, cfg: config.Config, source: str | None) -> str:
     typer.echo(f"📄 {file_path}")
 
-    # 1. Extract text
     content = _extract_text(file_path)
     if not content or not content.strip():
         typer.echo("   ⚠️  Empty content, skipped")
         return "skip"
 
-    # 2. LLM extraction (truncate if too long)
-    llm_input = content[:MAX_LLM_CHARS]
-    extracted = _llm_extract(llm_input, cfg)
-    if extracted is None:
-        typer.echo("   ❌ LLM extraction failed, skipped")
-        return "skip"
+    # Simple heuristic extraction (no LLM)
+    title = _extract_title_heuristic(content, file_path.stem)
 
-    title = extracted.get("title", file_path.stem)
-    summary = extracted.get("summary", content[:500])
-    page_type = extracted.get("page_type", "note")
+    # Combine title + content for storage
+    full_content = f"# {title}\n\n{content}"
 
-    # Combine summary + full content for storage
-    full_content = f"# {title}\n\n{summary}\n\n## Full Content\n\n{content}"
-
-    # 3. Write to DB (bypass interactive dedup for batch ingest)
     slug = utils.slugify(title)
     try:
         add.add_page(
             full_content,
-            page_type=page_type,
+            page_type="source",
             title=title,
             slug=slug,
             source=source or f"ingest:{file_path}",
@@ -92,6 +78,27 @@ def _ingest_file(file_path: Path, cfg: config.Config, source: str | None) -> str
     except Exception as exc:
         typer.echo(f"   ❌ {exc}")
         return "skip"
+
+
+def _extract_title_heuristic(content: str, fallback: str) -> str:
+    lines = content.strip().splitlines()
+    i = 0
+    # Skip YAML frontmatter
+    if lines and lines[0].strip() == "---":
+        i = 1
+        while i < len(lines) and lines[i].strip() != "---":
+            i += 1
+        i += 1  # skip closing ---
+    # Find first markdown heading
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+        if line and not line.startswith("---"):
+            # First non-empty non-frontmatter line
+            return line[:80]
+        i += 1
+    return fallback
 
 
 def _extract_text(file_path: Path) -> str:
@@ -107,35 +114,3 @@ def _extract_text(file_path: Path) -> str:
             typer.echo(f"   ⚠️  PDF read error: {exc}")
             return ""
     return ""
-
-
-def _llm_extract(content: str, cfg: config.Config) -> dict[str, str] | None:
-    if not cfg.llm_api_key:
-        # Fallback: use filename heuristics
-        return {
-            "title": content[:50].strip(),
-            "summary": content[:300].strip(),
-            "keywords": "",
-            "page_type": "source",
-        }
-
-    prompt = (
-        "请分析以下文档，提取结构化信息。\n\n"
-        "1. 标题（简短，一行）\n"
-        "2. 摘要（3-5 句话）\n"
-        "3. 关键词（5-10 个，逗号分隔）\n"
-        "4. 页面类型（note/entity/concept/source 之一）\n\n"
-        f"文档内容：\n---\n{content}\n---\n\n"
-        "请以纯 JSON 输出，不要 Markdown 代码块：\n"
-        '{"title": "...", "summary": "...", "keywords": "...", "page_type": "..."}'
-    )
-
-    try:
-        raw = llm.chat(prompt, cfg, temperature=0.2)
-        # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE)
-        return json.loads(raw)
-    except Exception:
-        return None

@@ -1,23 +1,19 @@
-"""Query the knowledge base."""
+"""Query the knowledge base (retrieval only, no LLM)."""
 
 from __future__ import annotations
 
-import textwrap
-
 import typer
 
-from gmind import config, db, embed, llm
+from gmind import config, db, embed
 
 
 def run_query(question: str, top_k: int = 5) -> None:
     cfg = config.load_config()
     db.init_pool(cfg.database_url)
 
-    # 1. Embed question
     vectors = embed.embed_texts([question], cfg)
     vector = vectors[0]
 
-    # 2. Vector search
     with db.get_conn() as conn:
         rows = conn.execute(
             """
@@ -39,32 +35,11 @@ def run_query(question: str, top_k: int = 5) -> None:
         typer.echo("No relevant pages found.")
         return
 
-    # 3. Build context for LLM
-    context_parts = []
+    typer.echo(f"\n🔍 Top {len(rows)} results for: {question}\n")
     for i, (slug, title, content, similarity) in enumerate(rows, 1):
-        context_parts.append(
-            f"[{i}] {title} (slug: {slug}, similarity: {similarity:.3f})\n{content}\n"
-        )
-    context = "\n".join(context_parts)
-
-    prompt = textwrap.dedent(
-        f"""\
-        You are a knowledge assistant. Answer the user's question based on the retrieved notes.
-        Cite sources using [[slug]] format.
-
-        Retrieved notes:
-        {context}
-
-        Question: {question}
-
-        Answer:"""
-    )
-
-    # 4. Call LLM
-    answer = llm.chat(prompt, cfg, temperature=0.3)
-
-    typer.echo("\n🧠 Answer:\n")
-    typer.echo(answer)
-    typer.echo("\n📚 Sources:")
-    for slug, title, _, similarity in rows:
-        typer.echo(f"  - [[{slug}]] {title} (similarity: {similarity:.3f})")
+        typer.echo(f"[{i}] [[{slug}]] {title} (similarity: {similarity:.3f})")
+        # Truncate long content
+        preview = content.replace("\n", " ")
+        if len(preview) > 300:
+            preview = preview[:300] + "..."
+        typer.echo(f"    {preview}\n")
