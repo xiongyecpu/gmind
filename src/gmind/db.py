@@ -119,5 +119,6 @@ def get_conn():
 def init_db(database_url: str) -> None:
     """Create extensions and tables."""
     with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         register_vector(conn)
         conn.execute(SCHEMA_SQL)
