@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from gmind import add, config, db, ingest, merge, query, search, stats, sync
+from gmind import add, config, db, graph, ingest, merge, query, search, stats, sync
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
@@ -108,6 +108,21 @@ def ingest_cmd(
 ) -> None:
     """Batch ingest files (.md, .txt, .pdf) into the knowledge base."""
     ingest.run_ingest(path, recursive=recursive, source=source)
+
+
+@app.command(name="graph")
+def graph_cmd(
+    slug: str | None = typer.Argument(None, help="Page slug to explore"),
+    depth: int = typer.Option(1, "--depth", "-d", help="Graph depth"),
+    orphans: bool = typer.Option(False, "--orphans", help="List orphan pages"),
+    hubs: bool = typer.Option(False, "--hubs", help="List hub pages"),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Rebuild edges from [[links]]"),
+) -> None:
+    """Query the knowledge graph."""
+    if rebuild:
+        graph.run_rebuild()
+    else:
+        graph.run_graph(slug, depth=depth, orphans=orphans, hubs=hubs)
 
 
 @app.command(name="merge")
