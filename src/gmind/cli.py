@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from gmind import add, config, db, merge, query, search, sync
+from gmind import add, config, db, ingest, merge, query, search, stats, sync
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
@@ -92,6 +92,22 @@ def sync_cmd(
 ) -> None:
     """Sync local drafts to published state."""
     sync.run_sync(dry_run=dry_run, auto_merge=auto_merge)
+
+
+@app.command(name="stats")
+def stats_cmd() -> None:
+    """Show knowledge base statistics."""
+    stats.run_stats()
+
+
+@app.command(name="ingest")
+def ingest_cmd(
+    path: str = typer.Argument(..., help="File or directory to ingest"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Recurse into directories"),
+    source: str | None = typer.Option(None, "--source", help="Source reference"),
+) -> None:
+    """Batch ingest files (.md, .txt, .pdf) into the knowledge base."""
+    ingest.run_ingest(path, recursive=recursive, source=source)
 
 
 @app.command(name="merge")
