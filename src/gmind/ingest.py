@@ -63,11 +63,12 @@ def _ingest_file(file_path: Path, cfg: config.Config, source: str | None) -> str
     # Combine title + content for storage
     full_content = f"# {title}\n\n{content}"
 
+    page_type = _infer_type(title, content)
     slug = utils.slugify(title)
     try:
         add.add_page(
             full_content,
-            page_type="source",
+            page_type=page_type,
             title=title,
             slug=slug,
             source=source or f"ingest:{file_path}",
@@ -78,6 +79,20 @@ def _ingest_file(file_path: Path, cfg: config.Config, source: str | None) -> str
     except Exception as exc:
         typer.echo(f"   ❌ {exc}")
         return "skip"
+
+
+def _infer_type(title: str, content: str) -> str:
+    """Infer page type from title/content keywords (heuristic, no LLM)."""
+    text = (title + " " + content[:500]).lower()
+    if any(k in text for k in ("公司", "集团", "科技", "有限", "corp", "inc", "ltd", "company")):
+        return "company"
+    if any(k in text for k in ("项目", "工程", "系统", "platform", "project")):
+        return "project"
+    if any(k in text for k in ("教授", "博士", "先生", "女士", "founder", "ceo", "author")):
+        return "person"
+    if any(k in text for k in ("产品", "工具", "app", "软件", "product", "tool")):
+        return "product"
+    return "source"
 
 
 def _extract_title_heuristic(content: str, fallback: str) -> str:

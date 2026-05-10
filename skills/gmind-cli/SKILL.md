@@ -29,13 +29,21 @@ GMind is a personal knowledge base backed by PostgreSQL + pgvector. It stores no
 gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--source <source>]
 ```
 
-- `--type`: `note` (default), `entity`, `concept`, `source`, `query`, `synthesis`
+- `--type`: `note` (default), `source`, `concept`, `project`, `person`, `company`, `product`, `synthesis`, `query`, `entity`
 - `--title`: Display title. Defaults to first 50 chars of content.
 - `--slug`: URL-safe identifier. Auto-generated from title pinyin if omitted.
 - `--source`: Mandatory for agent writes. Format: `agent-name:session-id`
 - `--on-duplicate`: `[a]ppend` / `[o]verwrite` / `[i]gnore`. Use in non-interactive mode.
 
-**Entity rule**: When adding people, companies, or named entities, always use `--type entity`.
+**Type rules**:
+- People → `--type person`
+- Companies/orgs → `--type company`
+- Products/tools → `--type product`
+- Projects/systems → `--type project`
+- Concepts/knowledge → `--type concept`
+- Sources/refs → `--type source`
+- General notes → `--type note` (default)
+- Use `--type entity` only when unsure (legacy fallback)
 
 **Deduplication**: Similarity > 0.92 triggers merge prompt. In non-interactive mode, default is append.
 
@@ -162,7 +170,7 @@ gmind init [--node <name>]
 
 1. **Always include `--source`** for agent-initiated writes
 2. **Reference existing pages** with `[[slug]]` syntax (English slug, not title)
-3. **Use `--type entity`** for named entities (people, orgs, products)
+3. **Use specific types**: `person` for people, `company` for orgs, `product` for tools
 4. **Prefer append over overwrite** when deduplication fires
 
 ## Prohibited Actions

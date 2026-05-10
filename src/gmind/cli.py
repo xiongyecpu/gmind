@@ -39,7 +39,11 @@ def init(
 @app.command(name="add")
 def add_cmd(
     content: list[str] = ARG_CONTENT,
-    type_: str = typer.Option("note", "--type", "-t", help="Page type"),
+    type_: str = typer.Option(
+        "note", "--type", "-t",
+        help="Type: note, source, concept, project, person, "
+             "company, product, synthesis, query, entity",
+    ),
     title: str | None = typer.Option(None, "--title", help="Page title"),
     slug: str | None = typer.Option(None, "--slug", "-s", help="URL slug"),
     source: str | None = typer.Option(None, "--source", help="Source reference"),
