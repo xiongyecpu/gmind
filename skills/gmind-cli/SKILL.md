@@ -102,6 +102,23 @@ gmind graph --rebuild                   # extract [[link]] edges from all pages
 - Parses `[[slug]]` and `[[slug|title]]` syntax in page content
 - `--rebuild` scans entire database and populates edges table
 
+### Lint (health check)
+
+```bash
+gmind lint
+```
+
+- Checks: orphan pages, broken [[links]], merge_review pending, missing embeddings
+
+### Export (backup)
+
+```bash
+gmind export <output-dir>
+```
+
+- Exports all pages to `.md` files with YAML frontmatter
+- Preserves slug directory structure
+
 ### Merge (resolve conflicts)
 
 ```bash
@@ -132,6 +149,8 @@ gmind init [--node <name>]
 | `ingest` | Batch import .md/.txt/.pdf |
 | `sync` | Publish drafts, detect conflicts |
 | `graph` | Knowledge graph: links, orphans, hubs |
+| `lint` | Health check |
+| `export` | Export to markdown |
 | `merge` | Manual conflict resolution with version history |
 
 ## Writing Rules
@@ -163,4 +182,4 @@ gmind init [--node <name>]
 | P2 Ingest | ✅ Done | ingest (files/PDF) |
 | P4 Stats | ✅ Done | stats |
 | P3 Graph | ✅ Done | graph, link extraction |
-| P4 Maintenance | 📋 Todo | lint, stats, export |
+| P4 Maintenance | ✅ Done | lint, stats, export |
