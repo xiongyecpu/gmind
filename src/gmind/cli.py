@@ -85,7 +85,7 @@ def query_cmd(
     query.run_query(text, top_k=top_k)
 
 
-@app.command()
+@app.command(name="sync")
 def sync_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
     auto_merge: bool = typer.Option(False, "--auto-merge", help="Auto-merge conflicts via LLM"),
@@ -94,7 +94,7 @@ def sync_cmd(
     sync.run_sync(dry_run=dry_run, auto_merge=auto_merge)
 
 
-@app.command()
+@app.command(name="merge")
 def merge_cmd(
     slug: str = typer.Argument(..., help="Page slug to resolve"),
     list_versions: bool = typer.Option(False, "--list", help="List history versions"),
