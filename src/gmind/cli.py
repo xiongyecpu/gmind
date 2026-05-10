@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from gmind import add, config, db, graph, ingest, merge, query, search, stats, sync
+from gmind import add, config, db, export, graph, ingest, lint, merge, query, search, stats, sync
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
@@ -123,6 +123,20 @@ def graph_cmd(
         graph.run_rebuild()
     else:
         graph.run_graph(slug, depth=depth, orphans=orphans, hubs=hubs)
+
+
+@app.command(name="lint")
+def lint_cmd() -> None:
+    """Run health checks on the knowledge base."""
+    lint.run_lint()
+
+
+@app.command(name="export")
+def export_cmd(
+    output_dir: str = typer.Argument(..., help="Output directory"),
+) -> None:
+    """Export all pages to markdown files."""
+    export.run_export(output_dir)
 
 
 @app.command(name="merge")
