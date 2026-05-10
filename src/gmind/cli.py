@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from gmind import add, config, db, query
+from gmind import add, config, db, merge, query, sync
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
@@ -66,6 +66,31 @@ def query_cmd(
     """Query the knowledge base with semantic search."""
     text = " ".join(question)
     query.run_query(text, top_k=top_k)
+
+
+@app.command()
+def sync_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
+) -> None:
+    """Sync local drafts to published state."""
+    sync.run_sync(dry_run=dry_run)
+
+
+@app.command()
+def merge_cmd(
+    slug: str = typer.Argument(..., help="Page slug to resolve"),
+    list_versions: bool = typer.Option(False, "--list", help="List history versions"),
+    pick: int | None = typer.Option(None, "--pick", help="Revert to version"),
+    edit: bool = typer.Option(False, "--edit", help="Open editor"),
+    version: int | None = typer.Option(None, "--version", help="Revert to version"),
+) -> None:
+    """Manually resolve merge conflicts."""
+    merge.run_manual_merge(
+        slug,
+        list_versions=list_versions,
+        pick_version=pick or version,
+        edit=edit,
+    )
 
 
 if __name__ == "__main__":

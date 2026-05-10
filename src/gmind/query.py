@@ -5,9 +5,8 @@ from __future__ import annotations
 import textwrap
 
 import typer
-from openai import OpenAI
 
-from gmind import config, db, embed
+from gmind import config, db, embed, llm
 
 
 def run_query(question: str, top_k: int = 5) -> None:
@@ -62,19 +61,7 @@ def run_query(question: str, top_k: int = 5) -> None:
     )
 
     # 4. Call LLM
-    client = OpenAI(
-        api_key=cfg.llm_api_key,
-        base_url=cfg.llm_base_url,
-    )
-    resp = client.chat.completions.create(
-        model=cfg.llm_model,
-        messages=[
-            {"role": "system", "content": "You are a helpful knowledge assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.3,
-    )
-    answer = resp.choices[0].message.content or ""
+    answer = llm.chat(prompt, cfg, temperature=0.3)
 
     typer.echo("\n🧠 Answer:\n")
     typer.echo(answer)
