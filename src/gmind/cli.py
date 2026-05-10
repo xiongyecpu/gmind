@@ -39,7 +39,7 @@ def init(
     typer.echo("✅ Database initialized")
 
 
-@app.command()
+@app.command(name="add")
 def add_cmd(
     content: list[str] = ARG_CONTENT,
     type_: str = typer.Option("note", "--type", "-t", help="Page type"),
@@ -58,7 +58,7 @@ def add_cmd(
     )
 
 
-@app.command()
+@app.command(name="query")
 def query_cmd(
     question: list[str] = ARG_QUESTION,
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
