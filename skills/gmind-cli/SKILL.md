@@ -90,6 +90,18 @@ gmind sync [--dry-run] [--auto-merge]
 - `--auto-merge`: uses LLM to auto-merge conflicts (requires LLM key)
 - **Agent workflow**: After `gmind sync`, check for `merge_review` pages. Use `gmind search` to read both versions, then use your own reasoning to merge and write the result back via `gmind add`.
 
+### Graph (knowledge graph)
+
+```bash
+gmind graph <slug> [--depth <n>]        # explore page connections
+gmind graph --orphans                   # pages with no links
+gmind graph --hubs                      # most connected pages
+gmind graph --rebuild                   # extract [[link]] edges from all pages
+```
+
+- Parses `[[slug]]` and `[[slug|title]]` syntax in page content
+- `--rebuild` scans entire database and populates edges table
+
 ### Merge (resolve conflicts)
 
 ```bash
@@ -119,6 +131,7 @@ gmind init [--node <name>]
 | `stats` | Knowledge base dashboard |
 | `ingest` | Batch import .md/.txt/.pdf |
 | `sync` | Publish drafts, detect conflicts |
+| `graph` | Knowledge graph: links, orphans, hubs |
 | `merge` | Manual conflict resolution with version history |
 
 ## Writing Rules
@@ -149,5 +162,5 @@ gmind init [--node <name>]
 | P1 Sync | ✅ Done | sync, merge |
 | P2 Ingest | ✅ Done | ingest (files/PDF) |
 | P4 Stats | ✅ Done | stats |
-| P3 Graph | 📋 Todo | graph, link extraction |
+| P3 Graph | ✅ Done | graph, link extraction |
 | P4 Maintenance | 📋 Todo | lint, stats, export |
