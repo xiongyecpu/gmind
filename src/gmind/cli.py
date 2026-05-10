@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import typer
 
-from gmind import add, config, db, merge, query, sync
+from gmind import add, config, db, merge, query, search, sync
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
 ARG_CONTENT = typer.Argument(..., help="Note content")
 ARG_QUESTION = typer.Argument(..., help="Question to ask")
+ARG_KEYWORD = typer.Argument(..., help="Search keyword")
 
 
 @app.command()
@@ -21,8 +22,13 @@ def init(
     database_url = typer.prompt("PostgreSQL connection URL")
     embedding_api_key = typer.prompt("Embedding API key (SiliconFlow)", hide_input=True)
     embedding_model = typer.prompt("Embedding model", default="BAAI/bge-m3")
-    llm_api_key = typer.prompt("LLM API key (SiliconFlow)", hide_input=True)
-    llm_model = typer.prompt("LLM model", default="deepseek-ai/DeepSeek-V3")
+
+    use_llm = typer.confirm("Configure LLM for query/summary? (optional)", default=False)
+    llm_api_key = ""
+    llm_model = "deepseek-ai/DeepSeek-V3"
+    if use_llm:
+        llm_api_key = typer.prompt("LLM API key (SiliconFlow)", hide_input=True)
+        llm_model = typer.prompt("LLM model", default="deepseek-ai/DeepSeek-V3")
 
     cfg = config.Config(
         database_url=database_url,
@@ -58,12 +64,23 @@ def add_cmd(
     )
 
 
+@app.command(name="search")
+def search_cmd(
+    keyword: list[str] = ARG_KEYWORD,
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
+    json_output: bool = typer.Option(False, "--json", help="JSON output for agents"),
+) -> None:
+    """Search the knowledge base via vector similarity (no LLM)."""
+    text = " ".join(keyword)
+    search.run_search(text, top_k=top_k, json_output=json_output)
+
+
 @app.command(name="query")
 def query_cmd(
     question: list[str] = ARG_QUESTION,
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
 ) -> None:
-    """Query the knowledge base with semantic search."""
+    """Query with semantic search + LLM summary (requires LLM config)."""
     text = " ".join(question)
     query.run_query(text, top_k=top_k)
 
@@ -71,9 +88,10 @@ def query_cmd(
 @app.command()
 def sync_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
+    auto_merge: bool = typer.Option(False, "--auto-merge", help="Auto-merge conflicts via LLM"),
 ) -> None:
     """Sync local drafts to published state."""
-    sync.run_sync(dry_run=dry_run)
+    sync.run_sync(dry_run=dry_run, auto_merge=auto_merge)
 
 
 @app.command()

@@ -9,7 +9,7 @@ import typer
 from gmind import config, db, llm
 
 
-def run_sync(*, dry_run: bool = False) -> None:
+def run_sync(*, dry_run: bool = False, auto_merge: bool = False) -> None:
     cfg = config.load_config()
     db.init_pool(cfg.database_url)
     request_id = str(uuid.uuid4())
@@ -106,54 +106,62 @@ def run_sync(*, dry_run: bool = False) -> None:
                 )
                 _log_sync(conn, request_id, cfg.node_name, "conflict", slug)
 
-        # 2. MERGE phase: auto-merge merge_review pages
-        if not dry_run:
-            merge_reviews = conn.execute(
-                """
-                SELECT id, slug, title, content
-                FROM pages
-                WHERE status = 'merge_review' AND origin_node = %s
-                """,
-                (cfg.node_name,),
-            ).fetchall()
+        # 2. MERGE phase: auto-merge merge_review pages (only if --auto-merge)
+        if not dry_run and auto_merge:
+            if not cfg.llm_api_key:
+                typer.echo("Warning: --auto-merge requires llm_api_key, skipping merge phase")
+            else:
+                merge_reviews = conn.execute(
+                    """
+                    SELECT id, slug, title, content
+                    FROM pages
+                    WHERE status = 'merge_review' AND origin_node = %s
+                    """,
+                    (cfg.node_name,),
+                ).fetchall()
 
-            for mr_id, mr_slug, mr_title, mr_content in merge_reviews:
-                # Get the published version
-                pub_row = conn.execute(
-                    "SELECT content FROM pages WHERE slug = %s AND status = 'published'",
-                    (mr_slug,),
-                ).fetchone()
-                if pub_row is None:
-                    continue
+                for mr_id, mr_slug, mr_title, mr_content in merge_reviews:
+                    pub_row = conn.execute(
+                        "SELECT content FROM pages WHERE slug = %s AND status = 'published'",
+                        (mr_slug,),
+                    ).fetchone()
+                    if pub_row is None:
+                        continue
 
-                pub_content = pub_row[0]
-                merged = _llm_merge(mr_title, pub_content, mr_content, cfg)
+                    pub_content = pub_row[0]
+                    merged = _llm_merge(mr_title, pub_content, mr_content, cfg)
 
-                if merged:
-                    conn.execute(
-                        """
-                        UPDATE pages
-                        SET content = %s,
-                            status = 'published',
-                            version = version + 1,
-                            updated_at = now(),
-                            updated_by = %s
-                        WHERE id = %s
-                        """,
-                        (merged, cfg.node_name, mr_id),
-                    )
-                    _save_snapshot(conn, mr_id, None, cfg.node_name, action="merge")
-                    _log_sync(conn, request_id, cfg.node_name, "merge", mr_slug)
-                    merged_count += 1
-                    typer.echo(f"Auto-merged [[{mr_slug}]]")
-                else:
-                    typer.echo(f"Merge failed for [[{mr_slug}]], kept merge_review")
+                    if merged:
+                        conn.execute(
+                            """
+                            UPDATE pages
+                            SET content = %s,
+                                status = 'published',
+                                version = version + 1,
+                                updated_at = now(),
+                                updated_by = %s
+                            WHERE id = %s
+                            """,
+                            (merged, cfg.node_name, mr_id),
+                        )
+                        _save_snapshot(conn, mr_id, None, cfg.node_name, action="merge")
+                        _log_sync(conn, request_id, cfg.node_name, "merge", mr_slug)
+                        merged_count += 1
+                        typer.echo(f"Auto-merged [[{mr_slug}]]")
+                    else:
+                        typer.echo(f"Merge failed for [[{mr_slug}]], kept merge_review")
 
         # Summary
-        typer.echo(
-            f"\nSync complete: {published_count} published, "
-            f"{conflict_count} conflicts, {merged_count} auto-merged"
-        )
+        if auto_merge:
+            typer.echo(
+                f"\nSync complete: {published_count} published, "
+                f"{conflict_count} conflicts, {merged_count} auto-merged"
+            )
+        else:
+            typer.echo(
+                f"\nSync complete: {published_count} published, "
+                f"{conflict_count} conflicts pending merge_review"
+            )
 
 
 def _save_snapshot(

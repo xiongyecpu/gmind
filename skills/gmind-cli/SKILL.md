@@ -5,7 +5,7 @@ description: "Interact with the GMind knowledge base via CLI. Use when the user 
 
 # GMind CLI Skill
 
-GMind is a personal knowledge base backed by PostgreSQL + pgvector. It supports semantic search, automatic deduplication, and knowledge graph (planned).
+GMind is a personal knowledge base backed by PostgreSQL + pgvector. It supports semantic search, automatic deduplication, and multi-node sync.
 
 ## Core Commands
 
@@ -25,15 +25,18 @@ gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--sourc
 
 **Deduplication**: Similarity > 0.92 triggers merge prompt. In non-interactive mode, default is append.
 
-### Query the knowledge base
+### Search (preferred for agents)
 
 ```bash
-gmind query "<question>" [--top-k <n>]
+gmind search "<keyword>" [--top-k <n>] [--json]
 ```
 
-- Performs vector semantic search + LLM summarization
+- Pure vector semantic search, **no LLM call**
+- `--json`: JSON output for agent consumption (saves tokens)
 - Default top-k is 5
-- Returns answer with cited sources in `[[slug]]` format
+- Returns: slug, title, content, type, similarity
+
+**Agent workflow**: Use `gmind search --json` to retrieve relevant notes, then use your own reasoning to answer or synthesize. Do NOT use `gmind query` (it calls an external LLM and wastes tokens).
 
 ### Sync drafts to published
 
@@ -43,8 +46,9 @@ gmind sync [--dry-run]
 
 - Scans local `draft` pages and promotes them to `published`
 - Auto-detects conflicts (same slug, different checksum)
-- Conflicts trigger LLM auto-merge; fallback to `merge_review` if merge fails
-- `--dry-run` previews without touching data
+- Conflicts are marked `merge_review`; snapshots saved to `page_history`
+- **Agent workflow**: After `gmind sync`, check for `merge_review` pages. Use `gmind search` to read both versions, then use your own reasoning to merge and write the result back via `gmind add`.
+- `--dry-run`: previews without touching data
 
 ### Manually resolve conflicts
 
@@ -62,14 +66,18 @@ gmind merge <slug> --edit                    # open $EDITOR
 3. **Use `--type entity`** for named entities (people, orgs, products)
 4. **Prefer append over overwrite** when deduplication fires
 
-## Prohibited Actions
+## Agent Design Principles
 
-- ❌ Do not call `gmind sync` unless explicitly asked
-- ❌ Do not delete or overwrite existing pages without user confirmation
-- ❌ Do not ingest more than 10 files in one batch without confirmation
-- ❌ Do not call `gmind query` repeatedly for the same question
+- **You ARE the LLM**: GMind does not call LLMs. Use `gmind search --json` to retrieve data, then synthesize answers yourself.
+- **You ARE the merge engine**: When `gmind sync` produces `merge_review` pages, read both versions via search, merge them using your own judgment, then write back.
+- **GMind is your memory, not your brain**: It stores and retrieves. Reasoning, summarization, and merging are your job.
 
-## P0 Availability Note
+## Roadmap Status
 
-As of current version, only `init`, `add`, and `query` are implemented.
-`search`, `graph`, `sync`, `ingest`, `stats`, and `export` are on the roadmap (P1–P5).
+| Phase | Status | Commands |
+|-------|--------|----------|
+| P0 Core | ✅ Done | init, add, search, query |
+| P1 Sync | ✅ Done | sync, merge |
+| P2 Ingest | 📋 Todo | ingest (files/PDF) |
+| P3 Graph | 📋 Todo | graph, link extraction |
+| P4 Maintenance | 📋 Todo | lint, stats, export |
