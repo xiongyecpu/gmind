@@ -55,6 +55,28 @@ gmind query "<question>" [--top-k <n>]
 - Default top-k is 5
 - Returns answer with cited sources in `[[slug]]` format
 
+### Stats (knowledge base overview)
+
+```bash
+gmind stats
+```
+
+- Pages total / by type / embedding coverage
+- Orphan pages (no edges) / graph edges count
+- Recent 7-day writes / last sync / pending merges
+
+### Ingest (batch import)
+
+```bash
+gmind ingest <file-or-dir> [--recursive] [--source <ref>]
+```
+
+- Supports `.md`, `.txt`, `.pdf`
+- PDF text extraction via pdfplumber
+- LLM extracts title, summary, page_type automatically
+- Falls back to heuristics if no LLM key configured
+- Batch-safe: auto-append on duplicate
+
 ### Sync (publish drafts)
 
 ```bash
@@ -123,6 +145,7 @@ gmind init [--node <name>]
 |-------|--------|----------|
 | P0 Core | ✅ Done | init, add, search, query |
 | P1 Sync | ✅ Done | sync, merge |
-| P2 Ingest | 📋 Todo | ingest (files/PDF) |
+| P2 Ingest | ✅ Done | ingest (files/PDF) |
+| P4 Stats | ✅ Done | stats |
 | P3 Graph | 📋 Todo | graph, link extraction |
 | P4 Maintenance | 📋 Todo | lint, stats, export |
