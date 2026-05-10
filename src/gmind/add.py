@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import typer
 
 from gmind import config, db, embed, utils
@@ -16,6 +18,7 @@ def add_page(
     title: str | None = None,
     slug: str | None = None,
     source: str | None = None,
+    on_duplicate: str | None = None,
 ) -> None:
     cfg = config.load_config()
     db.init_pool(cfg.database_url)
@@ -47,9 +50,14 @@ def add_page(
                 f"⚠️  Similar page found: [[{row[0]}]] "
                 f'(similarity: {row[3]:.3f}, title: "{row[1]}")'
             )
-            action = typer.prompt(
-                "Action: [a]ppend / [o]verwrite / [i]gnore", default="a"
-            )
+            if on_duplicate is not None:
+                action = on_duplicate
+            elif sys.stdin.isatty():
+                action = typer.prompt(
+                    "Action: [a]ppend / [o]verwrite / [i]gnore", default="a"
+                )
+            else:
+                action = "a"
             if action.lower() == "a":
                 new_content = row[2] + f"\n\n## Updates\n\n{content}"
                 new_checksum = utils.make_checksum(new_content)

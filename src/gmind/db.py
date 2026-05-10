@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -93,11 +94,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_log_request ON sync_log(request_id, s
 
 def init_pool(database_url: str) -> None:
     global _pool
+    if _pool is not None:
+        _pool.close()
     _pool = ConnectionPool(
         conninfo=database_url,
         min_size=1,
         max_size=10,
     )
+    atexit.register(close_pool)
 
 
 def close_pool() -> None:

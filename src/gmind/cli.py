@@ -46,10 +46,16 @@ def add_cmd(
     title: str | None = typer.Option(None, "--title", help="Page title"),
     slug: str | None = typer.Option(None, "--slug", "-s", help="URL slug"),
     source: str | None = typer.Option(None, "--source", help="Source reference"),
+    on_duplicate: str | None = typer.Option(
+        None, "--on-duplicate", help="[a]ppend / [o]verwrite / [i]gnore"
+    ),
 ) -> None:
     """Add a note to the knowledge base."""
     text = " ".join(content)
-    add.add_page(text, page_type=type_, title=title, slug=slug, source=source)
+    add.add_page(
+        text, page_type=type_, title=title, slug=slug,
+        source=source, on_duplicate=on_duplicate,
+    )
 
 
 @app.command()
