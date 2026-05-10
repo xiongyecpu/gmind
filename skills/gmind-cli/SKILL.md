@@ -35,6 +35,26 @@ gmind query "<question>" [--top-k <n>]
 - Default top-k is 5
 - Returns answer with cited sources in `[[slug]]` format
 
+### Sync drafts to published
+
+```bash
+gmind sync [--dry-run]
+```
+
+- Scans local `draft` pages and promotes them to `published`
+- Auto-detects conflicts (same slug, different checksum)
+- Conflicts trigger LLM auto-merge; fallback to `merge_review` if merge fails
+- `--dry-run` previews without touching data
+
+### Manually resolve conflicts
+
+```bash
+gmind merge <slug> --list                    # show history versions
+gmind merge <slug> --pick <version>          # revert to version
+gmind merge <slug> --version <version>       # same as --pick
+gmind merge <slug> --edit                    # open $EDITOR
+```
+
 ## Writing Rules
 
 1. **Always include `--source`** for agent-initiated writes
