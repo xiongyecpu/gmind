@@ -26,8 +26,32 @@
 - Python 3.12+
 - PostgreSQL 14+ with [pgvector](https://github.com/pgvector/pgvector) extension
 - [uv](https://docs.astral.sh/uv/) (recommended)
+- Embedding API key ([SiliconFlow](https://siliconflow.cn/) 或任意 OpenAI-compatible)
 
-### Install
+#### 1. 启动 PostgreSQL + pgvector
+
+**Docker（推荐，一键启动）：**
+```bash
+docker run -d \
+  --name gmind-postgres \
+  -e POSTGRES_USER=gbrain \
+  -e POSTGRES_PASSWORD=your_password \
+  -e POSTGRES_DB=gmind \
+  -p 5432:5432 \
+  ankane/pgvector:latest
+```
+
+**本地安装（macOS）：**
+```bash
+brew install postgresql@16
+brew install pgvector
+brew services start postgresql@16
+# 创建数据库
+createdb gmind
+psql gmind -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+#### 2. 安装 GMind CLI
 
 ```bash
 git clone https://github.com/xiongyecpu/gmind.git
@@ -37,16 +61,37 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
 
-### Init
+**加到 PATH（不然打 `gmind` 会报 command not found）：**
+```bash
+# 临时（当前终端）
+export PATH="$PWD/.venv/bin:$PATH"
+
+# 永久（推荐）
+ln -s "$PWD/.venv/bin/gmind" ~/.local/bin/gmind
+# 确保 ~/.local/bin 在 PATH 中
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc  # 或 ~/.zshrc
+```
+
+#### 3. 初始化配置
 
 ```bash
 gmind init --node home
 ```
 
-This creates `~/.gmind/config.toml` and asks for:
-- PostgreSQL URL (e.g. `postgresql://user:pass@host:5432/gmind`)
-- Embedding API key (e.g. SiliconFlow)
-- Embedding model (default: `BAAI/bge-m3`, 1024-dim)
+交互式询问三项：
+- PostgreSQL URL（如 `postgresql://gbrain:your_password@localhost:5432/gmind`）
+- Embedding API key（SiliconFlow 的 key）
+- Embedding model（默认 `BAAI/bge-m3`，1024 维）
+
+配置保存到 `~/.gmind/config.toml`，示例：
+
+```toml
+database_url = "postgresql://gbrain:your_password@localhost:5432/gmind"
+node_name = "home"
+embedding_api_key = "sk-xxxxx"
+embedding_model = "BAAI/bge-m3"
+embedding_base_url = "https://api.siliconflow.cn/v1"
+```
 
 ### Usage
 
