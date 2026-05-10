@@ -7,6 +7,10 @@ description: "Interact with the GMind knowledge base via CLI. Use when the user 
 
 GMind is a personal knowledge base backed by PostgreSQL + pgvector. It supports semantic search, automatic deduplication, and multi-node sync.
 
+## Binary Location
+
+`~/.local/bin/gmind` — linked to the project venv. If not in PATH, use full path.
+
 ## Core Commands
 
 ### Add a note
@@ -25,6 +29,8 @@ gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--sourc
 
 **Deduplication**: Similarity > 0.92 triggers merge prompt. In non-interactive mode, default is append.
 
+**File import**: Use `$(cat '/path/to/file.md')` to pipe file contents into add.
+
 ### Search (preferred for agents)
 
 ```bash
@@ -38,26 +44,58 @@ gmind search "<keyword>" [--top-k <n>] [--json]
 
 **Agent workflow**: Use `gmind search --json` to retrieve relevant notes, then use your own reasoning to answer or synthesize. Do NOT use `gmind query` (it calls an external LLM and wastes tokens).
 
-### Sync drafts to published
+### Query (semantic search + LLM summary)
 
 ```bash
-gmind sync [--dry-run]
+gmind query "<question>" [--top-k <n>]
+```
+
+- Performs vector semantic search + LLM summarization
+- Requires LLM API key configured
+- Default top-k is 5
+- Returns answer with cited sources in `[[slug]]` format
+
+### Sync (publish drafts)
+
+```bash
+gmind sync [--dry-run] [--auto-merge]
 ```
 
 - Scans local `draft` pages and promotes them to `published`
 - Auto-detects conflicts (same slug, different checksum)
 - Conflicts are marked `merge_review`; snapshots saved to `page_history`
-- **Agent workflow**: After `gmind sync`, check for `merge_review` pages. Use `gmind search` to read both versions, then use your own reasoning to merge and write the result back via `gmind add`.
 - `--dry-run`: previews without touching data
+- `--auto-merge`: uses LLM to auto-merge conflicts (requires LLM key)
+- **Agent workflow**: After `gmind sync`, check for `merge_review` pages. Use `gmind search` to read both versions, then use your own reasoning to merge and write the result back via `gmind add`.
 
-### Manually resolve conflicts
+### Merge (resolve conflicts)
 
 ```bash
-gmind merge <slug> --list                    # show history versions
-gmind merge <slug> --pick <version>          # revert to version
-gmind merge <slug> --version <version>       # same as --pick
-gmind merge <slug> --edit                    # open $EDITOR
+gmind merge <slug> [--list] [--pick <version>] [--edit]
 ```
+
+- `--list`: Show history versions for a page
+- `--pick <version>`: Revert to a specific version
+- `--edit`: Open $EDITOR to manually resolve
+
+### Init
+
+```bash
+gmind init [--node <name>]
+```
+
+- Initialize gmind configuration and database connection
+
+## Implemented Commands
+
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize config and database |
+| `add` | Add notes with auto-embedding and dedup |
+| `search` | Vector similarity search, JSON output (agent-friendly) |
+| `query` | Semantic search + LLM summary (human-friendly) |
+| `sync` | Publish drafts, detect conflicts |
+| `merge` | Manual conflict resolution with version history |
 
 ## Writing Rules
 
@@ -65,6 +103,13 @@ gmind merge <slug> --edit                    # open $EDITOR
 2. **Reference existing pages** with `[[slug]]` syntax (English slug, not title)
 3. **Use `--type entity`** for named entities (people, orgs, products)
 4. **Prefer append over overwrite** when deduplication fires
+
+## Prohibited Actions
+
+- ❌ Do not call `gmind sync` unless explicitly asked
+- ❌ Do not delete or overwrite existing pages without user confirmation
+- ❌ Do not ingest more than 10 files in one batch without confirmation
+- ❌ Do not call `gmind query` repeatedly for the same question
 
 ## Agent Design Principles
 
