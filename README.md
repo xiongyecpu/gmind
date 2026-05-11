@@ -18,6 +18,8 @@
 | Lint | `gmind lint` | Health check |
 | Export | `gmind export ./backup/` | Markdown + YAML frontmatter |
 | Merge | `gmind merge <slug> --list` | Version history, revert, edit |
+| HTTP server | `gmind serve --port 8765` | Local API for browser extensions |
+| Chrome clipper | (extension) | Reader-mode → Markdown → one-click save |
 
 ## Quick Start
 
@@ -53,6 +55,14 @@ psql gmind -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 #### 2. 安装 GMind CLI
 
+**一键安装（推荐）：**
+```bash
+git clone https://github.com/xiongyecpu/gmind.git
+cd gmind
+./install.sh
+```
+
+**手动安装：**
 ```bash
 git clone https://github.com/xiongyecpu/gmind.git
 cd gmind
@@ -122,6 +132,9 @@ gmind lint
 
 # Export all pages
 gmind export ./backup/
+
+# Start HTTP server for Chrome extension
+gmind serve --port 8765
 ```
 
 ## Architecture
@@ -150,6 +163,8 @@ Agents use `gmind search --json` to retrieve raw data, then synthesize answers w
 
 - Python 3.12+, Typer, psycopg, pgvector
 - Embeddings: SiliconFlow / OpenAI-compatible APIs (BAAI/bge-m3)
+- HTTP API: Starlette + uvicorn
+- Browser: Chrome Extension (Manifest V3, Readability + Turndown)
 - Packaging: uv + pyproject.toml
 - Testing: pytest + GitHub Actions CI
 
@@ -195,6 +210,22 @@ ruff check src/ tests/
 pytest -v
 ```
 
+## Chrome Extension
+
+A companion browser extension lives in `chrome-extension/`:
+
+- **Reader Mode** extraction via Mozilla Readability.js (removes ads, nav, sidebars)
+- **Auto-converts** extracted HTML to Markdown via Turndown.js
+- **One-click save** sends `POST /add` to `localhost:8765`
+- **URL deduplication**: already-saved pages show a greyed-out "Saved" button
+
+### Install the extension
+
+1. Start the GMind server: `gmind serve --port 8765`
+2. Chrome → **Extensions** → Enable **Developer mode**
+3. **Load unpacked** → select the `chrome-extension/` folder in this repo
+4. Open any web page and click the GMind icon in the toolbar
+
 ## Roadmap
 
 | Phase | Status | Commands |
@@ -205,6 +236,7 @@ pytest -v
 | P3 Graph | ✅ Done | graph |
 | P4 Maintenance | ✅ Done | stats, lint, export |
 | P5 Open Source | ✅ Done | docs, CI/CD, skill install |
+| P6 Browser | ✅ Done | gmind serve, Chrome extension |
 
 ## License
 
