@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS pages (
     embedding     vector(1024),
     origin_node   TEXT NOT NULL DEFAULT 'default',
     status        TEXT NOT NULL DEFAULT 'draft',
+    state         TEXT DEFAULT 'processed',
     checksum      TEXT NOT NULL,
     version       INTEGER DEFAULT 1,
     created_at    TIMESTAMPTZ DEFAULT now(),
@@ -46,6 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_pages_embedding ON pages
 CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status);
 CREATE INDEX IF NOT EXISTS idx_pages_node ON pages(origin_node);
 CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(page_type);
+CREATE INDEX IF NOT EXISTS idx_pages_state ON pages(state);
 CREATE INDEX IF NOT EXISTS idx_pages_tags ON pages USING gin(tags);
 
 CREATE TABLE IF NOT EXISTS page_history (

@@ -4,7 +4,23 @@ from __future__ import annotations
 
 import typer
 
-from gmind import add, config, db, export, graph, ingest, lint, merge, query, search, stats, sync
+from gmind import (
+    add,
+    capture,
+    config,
+    db,
+    export,
+    graph,
+    ingest,
+    lint,
+    mark,
+    merge,
+    pending,
+    query,
+    search,
+    stats,
+    sync,
+)
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
@@ -148,6 +164,37 @@ def merge_cmd(
         pick_version=pick or version,
         edit=edit,
     )
+
+
+@app.command(name="pending")
+def pending_cmd(
+    limit: int = typer.Option(1, "--limit", "-l", help="Number of items to return"),
+    offset: int = typer.Option(0, "--offset", help="Offset for pagination"),
+    json_output: bool = typer.Option(False, "--json", help="JSON output for agents"),
+    count: bool = typer.Option(False, "--count", "-c", help="Show count only"),
+) -> None:
+    """List pending (unprocessed) raw materials."""
+    pending.run_pending(limit=limit, offset=offset, json_output=json_output, count_only=count)
+
+
+@app.command(name="mark")
+def mark_cmd(
+    slug: str = typer.Argument(..., help="Page slug to mark"),
+    state: str = typer.Option("processed", "--state", "-s", help="State: raw or processed"),
+) -> None:
+    """Mark a page as processed or raw."""
+    mark.run_mark(slug, state=state)
+
+
+@app.command(name="capture")
+def capture_cmd(
+    agent: str = typer.Argument(..., help="Agent name: hermes"),
+    session_id: str | None = typer.Option(None, "--session", help="Specific session ID"),
+    latest: bool = typer.Option(False, "--latest", "-l", help="Capture latest session"),
+    all_sessions: bool = typer.Option(False, "--all", "-a", help="Capture all sessions"),
+) -> None:
+    """Capture agent session history into GMind."""
+    capture.run_capture(agent, session_id=session_id, latest=latest, all_sessions=all_sessions)
 
 
 if __name__ == "__main__":

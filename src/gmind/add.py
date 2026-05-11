@@ -19,7 +19,11 @@ def add_page(
     slug: str | None = None,
     source: str | None = None,
     on_duplicate: str | None = None,
+    state: str | None = None,
 ) -> None:
+    """Add a page. State defaults to 'raw' for capture/source, 'processed' otherwise."""
+    if state is None:
+        state = "raw" if page_type in ("capture", "source") else "processed"
     cfg = config.load_config()
     db.init_pool(cfg.database_url)
 
@@ -100,14 +104,15 @@ def add_page(
         conn.execute(
             """
             INSERT INTO pages (slug, title, content, page_type, checksum,
-                               embedding, origin_node, status, sources, created_by, updated_by)
-            VALUES (%s, %s, %s, %s, %s, %s::vector, %s, 'draft', %s, %s, %s)
+                               embedding, origin_node, status, state, sources, created_by, updated_by)
+            VALUES (%s, %s, %s, %s, %s, %s::vector, %s, 'draft', %s, %s, %s, %s)
             ON CONFLICT (slug) DO UPDATE SET
                 content = EXCLUDED.content,
                 title = EXCLUDED.title,
                 page_type = EXCLUDED.page_type,
                 checksum = EXCLUDED.checksum,
                 embedding = EXCLUDED.embedding,
+                state = EXCLUDED.state,
                 version = pages.version + 1,
                 updated_at = now(),
                 updated_by = EXCLUDED.updated_by
@@ -122,6 +127,7 @@ def add_page(
                 checksum,
                 vector,
                 cfg.node_name,
+                state,
                 [source] if source else [],
                 cfg.node_name,
                 cfg.node_name,
