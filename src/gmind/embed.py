@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 MAX_BATCH_SIZE = 32
 MAX_RETRIES = 3
+MAX_CHARS_PER_TEXT = 15000  # Approximate token limit safety margin
 
 
 def embed_texts(texts: list[str], cfg: Config) -> list[list[float]]:
@@ -19,14 +20,17 @@ def embed_texts(texts: list[str], cfg: Config) -> list[list[float]]:
     if not texts:
         return []
 
+    # Truncate to avoid API token limits
+    truncated = [t[:MAX_CHARS_PER_TEXT] for t in texts]
+
     headers = {
         "Authorization": f"Bearer {cfg.embedding_api_key}",
         "Content-Type": "application/json",
     }
 
     results: list[list[float]] = []
-    for i in range(0, len(texts), MAX_BATCH_SIZE):
-        batch = texts[i : i + MAX_BATCH_SIZE]
+    for i in range(0, len(truncated), MAX_BATCH_SIZE):
+        batch = truncated[i : i + MAX_BATCH_SIZE]
         batch_results = _embed_batch(batch, cfg, headers)
         results.extend(batch_results)
 

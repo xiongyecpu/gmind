@@ -33,7 +33,7 @@ def add_page(
 
     # 1. Generate embedding
     vectors = embed.embed_texts([content], cfg)
-    vector = vectors[0]
+    vector = [float(v) for v in vectors[0]]
 
     with db.get_conn() as conn:
         # 2. Check for duplicates via vector similarity
@@ -104,7 +104,8 @@ def add_page(
         conn.execute(
             """
             INSERT INTO pages (slug, title, content, page_type, checksum,
-                               embedding, origin_node, status, state, sources, created_by, updated_by)
+                               embedding, origin_node, status, state,
+                               sources, created_by, updated_by)
             VALUES (%s, %s, %s, %s, %s, %s::vector, %s, 'draft', %s, %s, %s, %s)
             ON CONFLICT (slug) DO UPDATE SET
                 content = EXCLUDED.content,

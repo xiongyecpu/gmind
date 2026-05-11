@@ -18,6 +18,7 @@ from gmind import (
     pending,
     query,
     search,
+    server,
     stats,
     sync,
 )
@@ -188,13 +189,38 @@ def mark_cmd(
 
 @app.command(name="capture")
 def capture_cmd(
-    agent: str = typer.Argument(..., help="Agent name: hermes"),
+    agent: str = typer.Argument("hermes", help="Agent name: hermes, claude, codex, kimi, openclaw"),
     session_id: str | None = typer.Option(None, "--session", help="Specific session ID"),
     latest: bool = typer.Option(False, "--latest", "-l", help="Capture latest session"),
     all_sessions: bool = typer.Option(False, "--all", "-a", help="Capture all sessions"),
+    all_agents: bool = typer.Option(False, "--all-agents", help="Capture all agents"),
 ) -> None:
     """Capture agent session history into GMind."""
-    capture.run_capture(agent, session_id=session_id, latest=latest, all_sessions=all_sessions)
+    capture.run_capture(
+        agent,
+        session_id=session_id,
+        latest=latest,
+        all_sessions=all_sessions,
+        all_agents=all_agents,
+    )
+
+
+@app.command(name="serve")
+def serve_cmd(
+    port: int = typer.Option(8765, "--port", "-p", help="HTTP server port"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
+) -> None:
+    """Start the GMind HTTP server for browser integrations."""
+    import uvicorn
+
+    typer.echo(f"🚀 GMind server running at http://{host}:{port}")
+    uvicorn.run(
+        server.app,
+        host=host,
+        port=port,
+        log_level="info",
+        access_log=False,
+    )
 
 
 if __name__ == "__main__":

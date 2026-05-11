@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 
 _pool: ConnectionPool | None = None
+_pool_url: str | None = None
 
 SCHEMA_SQL = """
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -95,7 +96,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_log_request ON sync_log(request_id, s
 
 
 def init_pool(database_url: str) -> None:
-    global _pool
+    global _pool, _pool_url
+    if _pool is not None and _pool_url == database_url:
+        return
     if _pool is not None:
         _pool.close()
     _pool = ConnectionPool(
@@ -103,6 +106,7 @@ def init_pool(database_url: str) -> None:
         min_size=1,
         max_size=10,
     )
+    _pool_url = database_url
     atexit.register(close_pool)
 
 

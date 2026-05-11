@@ -14,6 +14,8 @@ dependencies = [
     "pypinyin>=0.51",
     "pgvector>=0.2",
     "pdfplumber>=0.10",
+    "starlette>=0.37",
+    "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]

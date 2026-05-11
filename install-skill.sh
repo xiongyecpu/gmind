@@ -14,6 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_SRC="$SCRIPT_DIR/skills/gmind-cli/SKILL.md"
 SKILL_DST="$HOME/.config/agents/skills/gmind-cli"
+SKILL_AGENTS_DST="$HOME/.agents/skills/gmind-cli"
 
 # Colors
 GREEN='\033[0;32m'
@@ -44,6 +45,13 @@ check_agents() {
         echo "  Hermes:     (not found)"
     fi
 
+    if [[ -d "$HOME/.agents/skills" ]]; then
+        echo "  Agents:     $HOME/.agents/skills"
+        found=$((found+1))
+    else
+        echo "  Agents:     (not found)"
+    fi
+
     if [[ -d "$HOME/.openclaw" ]]; then
         echo "  OpenClaw:   $HOME/.openclaw"
         found=$((found+1))
@@ -66,6 +74,17 @@ install_skill() {
     cp "$SKILL_SRC" "$SKILL_DST/SKILL.md"
     chmod 600 "$SKILL_DST/SKILL.md"
     ok "Installed: $SKILL_DST/SKILL.md"
+
+    # Also symlink to ~/.agents/skills/ for Hermes & other agents
+    if [[ -d "$HOME/.agents/skills" ]]; then
+        if [[ -L "$SKILL_AGENTS_DST" ]] || [[ -e "$SKILL_AGENTS_DST" ]]; then
+            rm -rf "$SKILL_AGENTS_DST"
+        fi
+        ln -s "$SKILL_DST" "$SKILL_AGENTS_DST"
+        ok "Linked: $SKILL_AGENTS_DST -> $SKILL_DST"
+    else
+        warn "Skipped agents link: $HOME/.agents/skills not found"
+    fi
 }
 
 print_help() {
@@ -75,14 +94,14 @@ Usage: ./install-skill.sh [options]
 Install the gmind-cli skill for AI agents.
 
   check: detects Hermes & OpenClaw presence
-  install: always writes to ~/.config/agents/skills/gmind-cli/
+  install: writes to ~/.config/agents/skills/gmind-cli/ and links to ~/.agents/skills/
 
 Options:
   --check         Show detected agents without installing
   -h, --help      Show this help
 
 Examples:
-  ./install-skill.sh        # Install to ~/.config/agents/skills/
+  ./install-skill.sh        # Install to ~/.config/agents/skills/ + ~/.agents/skills/
   ./install-skill.sh --check # Check which agents are present
 EOF
 }
