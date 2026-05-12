@@ -5,7 +5,7 @@ description: "Interact with the GMind knowledge base via CLI. Use when the user 
 
 # GMind CLI Skill
 
-GMind is a personal knowledge base backed by PostgreSQL + pgvector. It stores notes, performs vector search, and manages multi-node sync. **It does NOT call LLMs** -- reasoning and synthesis are the agent's job.
+GMind is a personal knowledge base backed by PostgreSQL + pgvector. It stores notes, performs vector search, manages multi-node sync, and (v3+) has built-in LLM capabilities for knowledge extraction and reasoning.
 
 ## Agent vs GMind: Responsibility Split
 
@@ -13,9 +13,11 @@ GMind is a personal knowledge base backed by PostgreSQL + pgvector. It stores no
 |------|-------------|
 | Store, retrieve, sync, export | **GMind CLI** |
 | Generate embeddings | **GMind CLI** (calls embedding API) |
-| Reason, summarize, answer | **You (the agent)** |
-| Merge conflict judgment | **You (the agent)** |
-| Extract title/summary from files | **You (the agent)** or simple heuristics |
+| Vector search | **GMind CLI** |
+| LLM reasoning / Q&A | **GMind CLI** (`gmind ask`) — v3 |
+| Entity/relation extraction | **GMind CLI** (`gmind enrich`, `--auto-extract`) — v3 |
+| Deep synthesis & judgment | **You (the agent)** |
+| Merge conflict resolution | **You (the agent)** or `gmind merge` |
 
 ## Binary Location
 
@@ -26,18 +28,17 @@ GMind is a personal knowledge base backed by PostgreSQL + pgvector. It stores no
 ### Add a note
 
 ```bash
-gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--source <source>]
+gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--source <source>] [--auto-extract]
 ```
 
-- `--type`: `note` (default), `source`, `concept`, `project`, `person`, `company`, `product`, `synthesis`, `query`, `entity`
+- `--type`: `note` (default), `source`, `concept`, `project`, `person`, `company`, `product`, `synthesis`, `query`, `entity`, `capture`
 - `--title`: Display title. Defaults to first 50 chars of content.
 - `--slug`: URL-safe identifier. Auto-generated from title pinyin if omitted.
 - `--source`: Mandatory for agent writes. Format: `agent-name:session-id`
 - `--on-duplicate`: `[a]ppend` / `[o]verwrite` / `[i]gnore`. Use in non-interactive mode.
+- `--auto-extract` / `-x`: **v3** — Auto-extract entities, relations, summary, and tags via LLM after saving.
 
 **Type system — Three-layer model**:
-
-GMind types are NOT just labels. They define the **role** of a page in the knowledge graph:
 
 ```
 L0 原始素材 (Raw input)          L1 提炼实体 (Entity档案)        L2 整合输出 (Output)
@@ -90,6 +91,49 @@ gmind query "<question>" [--top-k <n>]
 - **Critical rule**: Even with formatted output, do NOT echo gmind's raw results directly to the user. Read, understand, and rephrase with your own reasoning.
 - For agent use, prefer `search --json` (saves tokens).
 
+### Ask — LLM-enhanced Q&A (v3)
+
+```bash
+gmind ask "<question>" [--top-k <n>] [--temperature <t>]
+```
+
+- Retrieves relevant pages via vector search, then uses LLM to reason and answer
+- Answer includes `[[slug]]` citations
+- Sources are listed with relevance scores
+- **Use this when the user asks a question that requires synthesis across multiple notes**
+
+### Enrich — LLM knowledge extraction (v3)
+
+```bash
+gmind enrich <slug>
+```
+
+- Analyzes an existing page with LLM
+- Auto-extracts: entities, relations, summary, tags
+- Creates entity pages (type=`entity`) for extracted entities
+- Creates `edges` (link_type=`mentions`, source=`llm_extract`)
+- Sets `llm_enriched=true` on the page
+
+### Capture — Agent session history (v3)
+
+```bash
+gmind capture <agent> [--latest] [--all] [--session <id>] [--all-agents]
+```
+
+- Imports agent conversation history into GMind as `capture` type pages
+- Supported agents: `hermes`, `claude`, `codex`, `kimi`, `openclaw`
+- `--latest`: Import the most recent session only
+- `--all`: Import all sessions for the agent
+- `--session <id>`: Import a specific session by ID
+- `--all-agents`: Import latest session from all supported agents
+
+Session files are read from standard locations:
+- `hermes`: `~/.hermes/sessions/`
+- `claude`: `~/.claude/projects/`
+- `codex`: `~/.codex/archived_sessions/`
+- `kimi`: `~/.kimi/sessions/`
+- `openclaw`: `~/.openclaw/agents/main/sessions/`
+
 ### Stats
 
 ```bash
@@ -99,6 +143,7 @@ gmind stats
 - Pages total / by type / embedding coverage
 - Orphan pages / graph edges count
 - Recent 7-day writes / last sync / pending merges
+- LLM enrichment stats (v3)
 
 ### Ingest (batch import)
 
@@ -109,7 +154,7 @@ gmind ingest <file-or-dir> [--recursive] [--source <ref>]
 - Supports `.md`, `.txt`, `.pdf`
 - PDF text extraction via pdfplumber
 - Uses simple heuristics for title extraction (first line / filename)
-- **Does NOT call LLM** for extraction
+- **Does NOT call LLM** for extraction (use `--auto-extract` on individual adds instead)
 - Batch-safe: auto-append on duplicate
 
 ### Sync
@@ -135,6 +180,7 @@ gmind graph --rebuild
 
 - Parses `[[slug]]` and `[[slug|title]]` syntax in page content
 - `--rebuild` scans entire database and populates edges table
+- v3: Also shows `llm_extract` edges (from `gmind enrich`)
 
 ### Lint
 
@@ -143,6 +189,7 @@ gmind lint
 ```
 
 - Checks: orphan pages, broken [[links]], merge_review pending, missing embeddings
+- v3: Also checks pages not yet LLM-enriched
 
 ### Export
 
@@ -151,6 +198,7 @@ gmind export <output-dir>
 ```
 
 - Exports all pages to `.md` files with YAML frontmatter
+- v3: Includes `summary`, `tags`, `entities` in frontmatter
 
 ### Merge
 
@@ -168,22 +216,26 @@ gmind init [--node <name>]
 
 - Initialize gmind configuration and database connection
 - Only asks for: database URL, embedding API key, embedding model
+- v3: Also configure `[llm]` section for LLM provider (Ollama/OpenAI)
 
 ## Implemented Commands
 
-| Command | Description |
-|---------|-------------|
-| `init` | Initialize config and database |
-| `add` | Add notes with auto-embedding and dedup |
-| `search` | Vector similarity search, JSON output (agent-friendly) |
-| `query` | Semantic search, formatted output (human-friendly) |
-| `stats` | Knowledge base dashboard |
-| `ingest` | Batch import .md/.txt/.pdf |
-| `sync` | Publish drafts, detect conflicts |
-| `graph` | Knowledge graph: links, orphans, hubs |
-| `lint` | Health check |
-| `export` | Export to markdown |
-| `merge` | Manual conflict resolution with version history |
+| Command | Description | v3 |
+|---------|-------------|-----|
+| `init` | Initialize config and database | |
+| `add` | Add notes with auto-embedding and dedup | `+ --auto-extract` |
+| `search` | Vector similarity search, JSON output (agent-friendly) | |
+| `query` | Semantic search, formatted output (human-friendly) | |
+| `ask` | LLM-enhanced Q&A with citations | ✅ |
+| `enrich` | Auto-extract entities, relations, summary, tags | ✅ |
+| `capture` | Import agent session histories | ✅ |
+| `stats` | Knowledge base dashboard | |
+| `ingest` | Batch import .md/.txt/.pdf | |
+| `sync` | Publish drafts, detect conflicts | |
+| `graph` | Knowledge graph: links, orphans, hubs | |
+| `lint` | Health check | |
+| `export` | Export to markdown | |
+| `merge` | Manual conflict resolution with version history | |
 
 ## Writing Rules
 
@@ -197,6 +249,7 @@ gmind init [--node <name>]
    - Synthesize multiple sources → `synthesis` or `project`
 4. **Entity pages are档案 centers** — keep them updated with latest facts from new sources
 5. **Prefer append over overwrite** when deduplication fires
+6. **Use `--auto-extract`** when adding substantial notes — it auto-creates entity pages and edges
 
 ## Prohibited Actions
 
@@ -207,10 +260,10 @@ gmind init [--node <name>]
 
 ## Agent Design Principles
 
-- **You ARE the LLM**: GMind does not call LLMs. Use `gmind search --json` to retrieve data, then synthesize answers yourself.
+- **GMind is your memory**: Use `gmind search --json` to retrieve data, `gmind ask` for LLM-synthesized answers.
 - **NEVER echo raw gmind output**: Whether JSON from `search` or formatted text from `query`, always read, understand, and rephrase with your own reasoning before responding to the user.
 - **You ARE the merge engine**: When `gmind sync` produces `merge_review` pages, read both versions via search, merge them using your own judgment, then write back.
-- **GMind is your memory, not your brain**: It stores and retrieves. Reasoning, summarization, and merging are your job.
+- **Capture your sessions**: Use `gmind capture <agent> --latest` to persist this conversation into your knowledge base.
 
 ## CRITICAL: Never dump raw results to the user
 
@@ -232,3 +285,6 @@ Think of it as: gmind is your memory retrieval, not the user's. You query your m
 | P3 Graph | Done | graph |
 | P4 Maintenance | Done | stats, lint, export |
 | P5 Open Source | Done | docs, CI |
+| P6 Browser | Done | gmind serve, Chrome extension |
+| P7 LLM Engine | Done | ask, enrich, capture, auto-extract |
+| P8 macOS App | Done | Menu bar, Quick Add/Search |
