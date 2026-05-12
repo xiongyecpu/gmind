@@ -8,7 +8,7 @@
 
 GMind 是一个面向知识工作者的开源知识库 CLI 工具，基于 PostgreSQL + pgvector 构建，通过向量搜索和知识图谱将碎片化的笔记、阅读材料与思考串联成可查询、可探索的知识网络。
 
-**当前状态**：P8 完成（v3）。已有完整的 CLI、HTTP API、Chrome Extension、macOS 菜单栏应用（SwiftUI），以及内置 LLM 引擎。
+**当前状态**：P9 完成（v4）。已有完整的 CLI、HTTP API、Chrome Extension、macOS 菜单栏应用（SwiftUI）、内置 LLM 引擎，以及饕餮盛宴全电脑知识发现系统。
 
 ---
 
@@ -27,7 +27,15 @@ GMind 是一个面向知识工作者的开源知识库 CLI 工具，基于 Postg
 │   ├── search.py           # 向量搜索 (JSON/agent)
 │   ├── graph.py            # 知识图谱操作
 │   ├── enrich.py           # LLM 知识增强
-│   └── llm/                # 新增：LLM 引擎
+│   ├── capture.py          # Agent 会话导入
+│   ├── taotie/             # 新增：饕餮盛宴
+│   │   ├── scanner.py      # 全电脑文件扫描
+│   │   ├── classifier.py   # LLM 隐私分类
+│   │   ├── blacklist.py    # 黑名单管理
+│   │   ├── queue.py        # 入库队列
+│   │   ├── history.py      # 导入历史
+│   │   └── watcher.py      # 文件夹监听配置
+│   └── llm/                # LLM 引擎
 │       ├── engine.py       # Provider 抽象 (Ollama/OpenAI)
 │       ├── cache.py        # SQLite 响应缓存
 │       ├── extract.py      # 实体/关系提取
@@ -63,11 +71,15 @@ GMind 是一个面向知识工作者的开源知识库 CLI 工具，基于 Postg
 
 ```bash
 gmind init --node <name>              # 初始化
-gmind add "content" [--auto-extract]  # 添加笔记（可选 LLM 自动提取）
+gmind add "content"                   # 添加笔记（默认 LLM 自动提取）
 gmind search "keyword" --json         # 向量搜索
 gmind query "question"                # 纯检索（无 LLM）
-gmind ask "question"                  # LLM 增强问答（v3 新增）
-gmind enrich <slug>                   # LLM 知识增强（v3 新增）
+gmind ask "question"                  # LLM 增强问答
+gmind enrich <slug> / --all           # LLM 知识增强
+gmind capture hermes --latest         # 导入 Agent 会话
+gmind taotie scan                     # 全电脑扫描
+gmind taotie start / pause / queue    # 入库队列控制
+gmind taotie watch add <folder>       # 添加监听文件夹
 gmind sync                            # 同步
 gmind graph <slug> --depth 2          # 知识图谱
 gmind stats                           # 统计
@@ -83,6 +95,12 @@ gmind serve --port 8765               # HTTP 服务器
 | GET /search?q=...&k=5 | 向量搜索 |
 | POST /ask | LLM 问答 |
 | POST /enrich | LLM 知识增强 |
+| GET /taotie/scan | 全电脑文件扫描 |
+| GET /taotie/queue | 入库队列状态 |
+| POST /taotie/queue/start | 启动入库 |
+| POST /taotie/queue/pause | 暂停入库 |
+| GET /taotie/history | 导入历史 |
+| GET /taotie/watcher | 监听文件夹 |
 
 ---
 
@@ -167,6 +185,12 @@ src/gmind/llm/
 2. 在 `server.py` 添加端点
 3. 在 `cli.py` 添加命令
 4. 在 `enrich.py` 集成到知识增强流程
+
+新增 Taotie 功能时：
+1. 在 `taotie/` 下添加新模块
+2. 在 `server.py` 添加 `/taotie/*` 端点
+3. 在 `cli.py` 的 `taotie_app` 下添加命令
+4. 在 `TaotieView.swift` 添加 UI
 
 ---
 

@@ -12,12 +12,17 @@
 | Vector search | `gmind search "keyword" --json` | Pure semantic search, JSON output for agents |
 | Semantic query | `gmind query "question"` | Vector search with human-readable output |
 | Batch ingest | `gmind ingest ./docs/` | Import .md / .txt / .pdf |
+| Auto-extract | `gmind add "..."` | Default on: LLM entities, relations, tags |
+| Enrich | `gmind enrich <slug> / --all` | LLM knowledge enhancement |
+| Ask | `gmind ask "question"` | RAG Q&A over knowledge base |
+| Capture | `gmind capture hermes --latest` | Import agent session history |
 | Stats | `gmind stats` | Dashboard |
 | Sync | `gmind sync` | Draft → published, conflict detection |
 | Graph | `gmind graph <slug>` | Link extraction, orphans, hubs |
 | Lint | `gmind lint` | Health check |
 | Export | `gmind export ./backup/` | Markdown + YAML frontmatter |
 | Merge | `gmind merge <slug> --list` | Version history, revert, edit |
+| Taotie | `gmind taotie scan` | Full-computer knowledge discovery |
 | HTTP server | `gmind serve --port 8765` | Local API for browser extensions |
 | Chrome clipper | (extension) | Reader-mode → Markdown → one-click save |
 
@@ -117,6 +122,13 @@ gmind query "What is a vector database?"
 
 # Batch ingest
 gmind ingest ./papers/ --recursive
+
+# Capture latest agent session (hermes / openclaw / claude / kimi / codex)
+gmind capture hermes --latest
+
+# Full-computer knowledge discovery
+gmind taotie scan
+gmind taotie start
 
 # Dashboard
 gmind stats
@@ -237,8 +249,9 @@ A companion browser extension lives in `chrome-extension/`:
 | P4 Maintenance | ✅ Done | stats, lint, export |
 | P5 Open Source | ✅ Done | docs, CI/CD, skill install |
 | P6 Browser | ✅ Done | gmind serve, Chrome extension |
-| P7 LLM Engine | ✅ Done | ask, enrich, auto-extract |
-| P8 macOS App | ✅ Done | Menu bar, Quick Add/Search |
+| P7 LLM Engine | ✅ Done | ask, enrich, auto-extract, capture |
+| P8 macOS App | ✅ Done | Menu bar, Quick Add, Ask AI |
+| P9 Taotie | ✅ Done | Full-computer scan, ingest queue, folder watch |
 
 ## LLM Integration (v3)
 
@@ -282,6 +295,11 @@ gmind add "Some content..." --auto-extract
 | `/ask` | POST | LLM Q&A with citations |
 | `/enrich` | POST | Auto-extract entities & relations |
 | `/search` | GET | Vector search (JSON) |
+| `/taotie/scan` | GET | Full-computer file scan |
+| `/taotie/queue` | GET | Ingest queue state |
+| `/taotie/queue/start` | POST | Start ingest queue |
+| `/taotie/queue/pause` | POST | Pause ingest queue |
+| `/taotie/history` | GET | Import history |
 
 ## macOS Menu Bar App
 
@@ -297,8 +315,9 @@ open GMind.xcodeproj
 Features:
 - 🧠 Menu bar icon (no dock)
 - 📝 Quick Add panel
-- 🔍 Quick Search + Ask AI
-- 🚀 Dashboard window
+- 🧠 Ask AI panel
+- 🍽️ Taotie — full-computer scan & ingest queue
+- ⚙️ Model config (Settings)
 - Auto-starts `gmind serve`
 
 ## License
