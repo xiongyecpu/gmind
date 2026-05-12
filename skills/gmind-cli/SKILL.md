@@ -36,7 +36,7 @@ gmind add "<content>" [--type <type>] [--title <title>] [--slug <slug>] [--sourc
 - `--slug`: URL-safe identifier. Auto-generated from title pinyin if omitted.
 - `--source`: Mandatory for agent writes. Format: `agent-name:session-id`
 - `--on-duplicate`: `[a]ppend` / `[o]verwrite` / `[i]gnore`. Use in non-interactive mode.
-- `--auto-extract` / `-x`: **v3** — Auto-extract entities, relations, summary, and tags via LLM after saving.
+- `--auto-extract` / `-x`: **v3** — CLI opt-in. Auto-extract entities, relations, summary, and tags via LLM after saving.
 
 **Type system — Three-layer model**:
 
@@ -111,7 +111,7 @@ gmind enrich <slug>
 - Analyzes an existing page with LLM
 - Auto-extracts: entities, relations, summary, tags
 - Creates entity pages (type=`entity`) for extracted entities
-- Creates `edges` (link_type=`mentions`, source=`llm_extract`)
+- Creates entity pages and graph edges (`link_type=mentions` or relation type). The current DB schema has `created_by` and `evidence`, not an `edges.source` column.
 - Sets `llm_enriched=true` on the page
 
 ### Capture — Agent session history (v3)
@@ -143,7 +143,7 @@ gmind stats
 - Pages total / by type / embedding coverage
 - Orphan pages / graph edges count
 - Recent 7-day writes / last sync / pending merges
-- LLM enrichment stats (v3)
+- The HTTP `/stats` endpoint also exposes `llm_enriched`; CLI `gmind stats` currently focuses on core knowledge base health.
 
 ### Ingest (batch import)
 
@@ -152,6 +152,7 @@ gmind ingest <file-or-dir> [--recursive] [--source <ref>]
 ```
 
 - Supports `.md`, `.txt`, `.pdf`
+- Taotie can discover and preview-classify `.docx`, but normal `gmind ingest` does not yet extract `.docx` content.
 - PDF text extraction via pdfplumber
 - Uses simple heuristics for title extraction (first line / filename)
 - **Does NOT call LLM** for extraction (use `--auto-extract` on individual adds instead)
@@ -229,7 +230,7 @@ gmind init [--node <name>]
 | `ask` | LLM-enhanced Q&A with citations | ✅ |
 | `enrich` | Auto-extract entities, relations, summary, tags | ✅ |
 | `capture` | Import agent session histories | ✅ |
-| `stats` | Knowledge base dashboard | |
+| `stats` | Knowledge base overview | |
 | `ingest` | Batch import .md/.txt/.pdf | |
 | `sync` | Publish drafts, detect conflicts | |
 | `graph` | Knowledge graph: links, orphans, hubs | |
@@ -249,7 +250,7 @@ gmind init [--node <name>]
    - Synthesize multiple sources → `synthesis` or `project`
 4. **Entity pages are档案 centers** — keep them updated with latest facts from new sources
 5. **Prefer append over overwrite** when deduplication fires
-6. **Use `--auto-extract`** when adding substantial notes — it auto-creates entity pages and edges
+6. **Use `--auto-extract`** when adding substantial notes from CLI — it attempts to create entity pages and edges when LLM is configured
 
 ## Prohibited Actions
 
@@ -287,4 +288,5 @@ Think of it as: gmind is your memory retrieval, not the user's. You query your m
 | P5 Open Source | Done | docs, CI |
 | P6 Browser | Done | gmind serve, Chrome extension |
 | P7 LLM Engine | Done | ask, enrich, capture, auto-extract |
-| P8 macOS App | Done | Menu bar, Quick Add/Search |
+| P8 macOS App | Done | Menu bar, Quick Add, Ask AI, model config |
+| P9 Taotie | Done | Scan, classification, ingest queue, history, watcher config |

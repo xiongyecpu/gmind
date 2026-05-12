@@ -2,6 +2,8 @@
 
 > 从 "Agent-First Memory" 到 "Self-Contained Knowledge System"
 
+> 状态说明：这是 v3 规划稿，不是当前实现清单。已实现的主线包括 `ask`、`enrich`、LLM cache、macOS 菜单栏、Taotie 扫描/队列等；尚未按本文完整落地的部分包括 `llm_calls` 审计表、`/suggest-links`、`/stats/llm`、智能合并、Dashboard/WebView 图谱等。当前实现请以 `README.md`、`AGENTS.md` 和源码为准。
+
 ---
 
 ## 一、为什么做这个转变

@@ -1,0 +1,379 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: Canvas;
+  color: CanvasText;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 13px;
+  color: white;
+  background: #1864ab;
+}
+
+button.secondary {
+  color: CanvasText;
+  background: color-mix(in srgb, CanvasText 11%, transparent);
+}
+
+button.ghost {
+  color: CanvasText;
+  background: transparent;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 188px 1fr;
+  width: 100vw;
+  height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid color-mix(in srgb, CanvasText 13%, transparent);
+  background: color-mix(in srgb, Canvas 92%, CanvasText 3%);
+  padding: 18px 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 20px;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: white;
+  background: #1864ab;
+  font-weight: 700;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 17px;
+}
+
+h2 {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+h3 {
+  font-size: 14px;
+}
+
+.brand p,
+.hint,
+.eyebrow,
+.row span,
+.list-item span,
+.metric span {
+  color: color-mix(in srgb, CanvasText 58%, transparent);
+}
+
+.brand p,
+.hint,
+.eyebrow {
+  font-size: 12px;
+}
+
+.nav {
+  display: grid;
+  gap: 4px;
+}
+
+.nav-item {
+  width: 100%;
+  justify-content: flex-start;
+  color: CanvasText;
+  background: transparent;
+  text-align: left;
+}
+
+.nav-item.active {
+  color: white;
+  background: #1864ab;
+}
+
+.content {
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.tab {
+  display: none;
+  height: 100%;
+  overflow: auto;
+  padding: 22px;
+}
+
+.tab.active {
+  display: block;
+}
+
+.page-header,
+.panel-head,
+.toolbar,
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.page-header {
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: color-mix(in srgb, CanvasText 10%, transparent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.pill[data-state="Ready"] {
+  color: #087f5b;
+  background: color-mix(in srgb, #087f5b 14%, transparent);
+}
+
+.pill[data-state="Offline"],
+.pill[data-state="Conflict"] {
+  color: #c92a2a;
+  background: color-mix(in srgb, #c92a2a 14%, transparent);
+}
+
+.metric-grid,
+.split {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.metric,
+.panel {
+  border: 1px solid color-mix(in srgb, CanvasText 13%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, Canvas 96%, CanvasText 2%);
+}
+
+.metric {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.metric strong {
+  font-size: 24px;
+}
+
+.panel {
+  padding: 14px;
+}
+
+.panel-head {
+  margin-bottom: 10px;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  max-height: 390px;
+  overflow: auto;
+}
+
+.list.empty,
+.answer.empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  color: color-mix(in srgb, CanvasText 58%, transparent);
+  text-align: center;
+}
+
+.list-item {
+  display: grid;
+  gap: 3px;
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, CanvasText 6%, transparent);
+}
+
+.list-item strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.list-item span,
+.list-item em {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.composer {
+  width: 100%;
+  min-height: 330px;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 8px;
+  padding: 14px;
+  background: transparent;
+  color: CanvasText;
+  line-height: 1.55;
+}
+
+.ask-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+input,
+select {
+  min-height: 34px;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: transparent;
+  color: CanvasText;
+}
+
+.answer {
+  border: 1px solid color-mix(in srgb, CanvasText 13%, transparent);
+  border-radius: 8px;
+  padding: 16px;
+  line-height: 1.58;
+}
+
+.result {
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+  padding: 10px 0;
+}
+
+.result:first-child {
+  padding-top: 0;
+}
+
+.result div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.result p {
+  margin-top: 5px;
+  color: color-mix(in srgb, CanvasText 68%, transparent);
+  font-size: 13px;
+}
+
+.result code {
+  display: block;
+  margin-top: 5px;
+  color: color-mix(in srgb, CanvasText 52%, transparent);
+  font-size: 11px;
+}
+
+.sources {
+  display: grid;
+  gap: 5px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+}
+
+.sources span {
+  color: #1864ab;
+  font-size: 12px;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+  max-width: 460px;
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+}
+
+.form label span {
+  color: color-mix(in srgb, CanvasText 62%, transparent);
+  font-size: 12px;
+}
+
+.button-row {
+  display: flex;
+  gap: 6px;
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, CanvasText 13%, transparent);
+  }
+
+  .split,
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

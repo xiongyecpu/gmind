@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/xiongyecpu/gmind/actions/workflows/ci.yml/badge.svg)](https://github.com/xiongyecpu/gmind/actions/workflows/ci.yml)
 
-> A personal knowledge base backed by PostgreSQL + pgvector. Semantic search, multi-node sync, knowledge graph, and batch file ingestion. **Agent-first**: GMind stores and retrieves; reasoning is the agent's job.
+> A personal knowledge base backed by PostgreSQL + pgvector. Semantic search, multi-node sync, knowledge graph, batch file ingestion, and optional built-in LLM reasoning.
+>
+> Desktop direction: GMind is now moving to a Tauri-based tray app. The app registers the `gmind` CLI and manages the local HTTP server automatically.
 
 ## Features
 
@@ -12,21 +14,23 @@
 | Vector search | `gmind search "keyword" --json` | Pure semantic search, JSON output for agents |
 | Semantic query | `gmind query "question"` | Vector search with human-readable output |
 | Batch ingest | `gmind ingest ./docs/` | Import .md / .txt / .pdf |
-| Auto-extract | `gmind add "..."` | Default on: LLM entities, relations, tags |
+| Auto-extract | `gmind add "..." --auto-extract` | Opt-in from CLI: LLM entities, relations, tags |
 | Enrich | `gmind enrich <slug> / --all` | LLM knowledge enhancement |
 | Ask | `gmind ask "question"` | RAG Q&A over knowledge base |
 | Capture | `gmind capture hermes --latest` | Import agent session history |
-| Stats | `gmind stats` | Dashboard |
+| Stats | `gmind stats` | Knowledge base overview |
 | Sync | `gmind sync` | Draft → published, conflict detection |
 | Graph | `gmind graph <slug>` | Link extraction, orphans, hubs |
 | Lint | `gmind lint` | Health check |
 | Export | `gmind export ./backup/` | Markdown + YAML frontmatter |
 | Merge | `gmind merge <slug> --list` | Version history, revert, edit |
-| Taotie | `gmind taotie scan` | Full-computer knowledge discovery |
+| Taotie | `gmind taotie scan` | Full-computer scan, classification, ingest queue |
 | HTTP server | `gmind serve --port 8765` | Local API for browser extensions |
 | Chrome clipper | (extension) | Reader-mode → Markdown → one-click save |
 
 ## Quick Start
+
+GMind supports both the developer/CLI workflow below and the new desktop app workflow. The product direction is `GMind.app`: launch the app, let it register the CLI, and let it start the local HTTP server.
 
 ### Requirements
 
@@ -34,6 +38,7 @@
 - PostgreSQL 14+ with [pgvector](https://github.com/pgvector/pgvector) extension
 - [uv](https://docs.astral.sh/uv/) (recommended)
 - Embedding API key ([SiliconFlow](https://siliconflow.cn/) 或任意 OpenAI-compatible)
+- Optional LLM provider for `ask`, `enrich`, and `--auto-extract` (Ollama or OpenAI-compatible)
 
 #### 1. 启动 PostgreSQL + pgvector
 
@@ -58,7 +63,7 @@ createdb gmind
 psql gmind -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-#### 2. 安装 GMind CLI
+#### 2. 安装 GMind CLI（当前开发者方式）
 
 **一键安装（推荐）：**
 ```bash
@@ -114,6 +119,9 @@ embedding_base_url = "https://api.siliconflow.cn/v1"
 # Add a note
 gmind add "Vector databases store high-dimensional embeddings" --title "Vector DB"
 
+# Add a note and run LLM extraction
+gmind add "Vector databases store high-dimensional embeddings" --title "Vector DB" --auto-extract
+
 # Search (agent-friendly JSON)
 gmind search "vector database" --json
 
@@ -130,7 +138,7 @@ gmind capture hermes --latest
 gmind taotie scan
 gmind taotie start
 
-# Dashboard
+# Knowledge base overview
 gmind stats
 
 # Publish drafts + detect conflicts
@@ -153,14 +161,58 @@ gmind serve --port 8765
 
 All nodes share one PostgreSQL database. Visibility is controlled by `origin_node` + `status` columns (`draft` / `published` / `merge_review`). No bidirectional push/pull needed — sync is a simple state machine.
 
-### Agent-First Design
+### Desktop App Direction
 
-GMind does **not** call LLMs. This is intentional:
+The product shape is:
 
-- **GMind** = memory (store, retrieve, sync, search)
-- **Agent** = brain (reason, summarize, merge, answer)
+```text
+Install GMind.app
+→ Launch GMind.app
+→ App checks ~/.gmind/config.toml
+→ App registers the gmind CLI
+→ App starts the local HTTP server
+→ App, CLI, Chrome Extension, and agent skills share localhost APIs
+```
 
-Agents use `gmind search --json` to retrieve raw data, then synthesize answers with their own model. This eliminates redundant LLM calls and lets the agent control the reasoning chain.
+In this model, `GMind.app` is the product entry point. The CLI remains first-class for agents and terminal workflows, but it is installed and repaired by the app instead of requiring a manual `uv` or editable Python install.
+
+Target runtime architecture:
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│                     GMind.app                            │
+│                                                         │
+│  Tauri UI                                               │
+│  - Tray/menu bar entry / panels / settings              │
+│                                                         │
+│  App services                                           │
+│  - ServerManager                                        │
+│  - CLIRegistrationManager                               │
+│  - Config and diagnostics                               │
+│                                                         │
+│  Bundled backend                                        │
+│  - Python CLI                                           │
+│  - Starlette HTTP server                                │
+└─────────────────────────────────────────────────────────┘
+             ▲
+             │
+      ~/.local/bin/gmind
+      CLI shim managed by GMind.app
+```
+
+The Tauri app currently registers a managed CLI shim, starts `gmind serve`, exposes settings/diagnostics, and keeps the app as the primary local product entry. Release packaging will move the backend from a development CLI path to an app-bundled backend runtime.
+
+macOS remains a menu bar app. The cross-platform concept is a tray/status app: macOS maps to the menu bar extra, Windows maps to the notification area, and Linux maps to the available desktop tray implementation. Tauri is the selected cross-platform shell.
+
+### Memory-First, Optional LLM
+
+GMind started as an agent-first memory system, but current versions also include optional built-in LLM features:
+
+- **Always on**: store, embed, retrieve, sync, export, graph lookup.
+- **Optional LLM**: `gmind ask`, `gmind enrich`, and `gmind add --auto-extract`.
+- **Agent workflow**: agents can still use `gmind search --json` and synthesize answers themselves.
+
+If no `[llm]` provider is configured, GMind remains a pure retrieval and memory tool.
 
 ## Database Schema
 
@@ -168,17 +220,61 @@ Agents use `gmind search --json` to retrieve raw data, then synthesize answers w
 |-------|---------|
 | pages | Global pages with 1024-dim vector embeddings |
 | page_history | Change history with full JSONB snapshots |
-| edges | Knowledge graph relationships |
+| edges | Knowledge graph relationships (`link_type`, `weight`, `confidence`, `evidence`, `created_by`) |
 | sync_log | Sync audit log with request_id dedup |
+
+Current `edges` schema does not include an `edges.source` column. Source-like provenance should use a schema migration or existing `created_by` / `evidence` fields.
 
 ## Tech Stack
 
 - Python 3.12+, Typer, psycopg, pgvector
 - Embeddings: SiliconFlow / OpenAI-compatible APIs (BAAI/bge-m3)
+- LLM: Ollama or OpenAI-compatible providers, with SQLite response cache
 - HTTP API: Starlette + uvicorn
-- Browser: Chrome Extension (Manifest V3, Readability + Turndown)
-- Packaging: uv + pyproject.toml
+- Browser: Chrome Extension (Manifest V3, Defuddle + Turndown)
+- Desktop app: Tauri v2 tray/status app with Rust process management and HTML/CSS/JS UI
+- Packaging: uv + pyproject.toml for backend development; Tauri app bundle for desktop
 - Testing: pytest + GitHub Actions CI
+
+## Repository Layout
+
+```text
+.
+├── src/gmind/                  # Python backend, CLI, HTTP API, core knowledge logic
+│   ├── cli.py                  # Typer CLI entrypoint
+│   ├── server.py               # Starlette HTTP server
+│   ├── db.py                   # PostgreSQL + pgvector access
+│   ├── config.py               # ~/.gmind/config.toml loading/saving
+│   ├── llm/                    # LLM providers, cache, extraction, reasoning
+│   └── taotie/                 # File scan, classification, ingest queue, watcher config
+├── gmind-desktop/              # Tauri tray app, selected cross-platform desktop shell
+│   ├── src/                    # Web UI for tray panels and settings
+│   └── src-tauri/              # Rust app shell, tray, sidecar, CLI registration
+├── chrome-extension/           # Chrome extension that talks to localhost:8765
+├── docs/                       # Design notes and migration plans
+├── skills/                     # Agent skill definitions
+├── tests/                      # pytest suite
+└── pyproject.toml              # Python package and CLI metadata
+```
+
+Planned App packaging layout:
+
+```text
+GMind.app/
+  Contents/
+    MacOS/
+      gmind-desktop            # Tauri app executable
+      gmind-cli                # App-bundled CLI launcher
+    Resources/
+      backend/                 # Bundled Python backend/runtime artifacts
+      cli-shim-template        # Template for ~/.local/bin/gmind
+
+User runtime files:
+  ~/.gmind/config.toml
+  ~/.local/bin/gmind
+  ~/Library/Application Support/GMind/
+  ~/Library/Logs/GMind/server.log
+```
 
 ## Agent Integration
 
@@ -202,38 +298,41 @@ GMind provides a `gmind-cli` skill for AI agents following the [agentskills.io](
 
 The skill file is at `skills/gmind-cli/SKILL.md` in this repo. It defines:
 - Core commands and their JSON output format
-- Agent design principles ("You ARE the LLM")
+- Agent design principles for retrieval, synthesis, and optional `gmind ask`
 - Writing rules (`--source`, `[[slug]]` references, entity types)
 - Prohibited actions (no raw dumps, no unconfirmed overwrites)
 
-### Key Principle: Agent is the Brain, GMind is the Memory
+### Key Principle: GMind is Memory, LLM is Optional
 
 | Task | Who |
 |------|-----|
 | Store, retrieve, sync, export | **GMind CLI** |
 | Generate embeddings | **GMind CLI** |
-| Reason, summarize, answer | **You (the agent)** |
+| Reason, summarize, answer | **GMind CLI via `ask`** or **you (the agent)** |
+| Entity/relation extraction | **GMind CLI via `enrich` / `--auto-extract`** |
 | Merge conflict judgment | **You (the agent)** |
 
 ## Development
 
 ```bash
-ruff check src/ tests/
-pytest -v
+uv run ruff check src/ tests/
+uv run pytest -v
 ```
 
 ## Chrome Extension
 
 A companion browser extension lives in `chrome-extension/`:
 
-- **Reader Mode** extraction via Mozilla Readability.js (removes ads, nav, sidebars)
+- **Reader Mode** extraction via Defuddle (removes ads, nav, sidebars)
 - **Auto-converts** extracted HTML to Markdown via Turndown.js
 - **One-click save** sends `POST /add` to `localhost:8765`
 - **URL deduplication**: already-saved pages show a greyed-out "Saved" button
 
 ### Install the extension
 
-1. Start the GMind server: `gmind serve --port 8765`
+1. Start GMind:
+   - Current developer flow: `gmind serve --port 8765`
+   - App flow: launch `GMind.app`
 2. Chrome → **Extensions** → Enable **Developer mode**
 3. **Load unpacked** → select the `chrome-extension/` folder in this repo
 4. Open any web page and click the GMind icon in the toolbar
@@ -250,8 +349,16 @@ A companion browser extension lives in `chrome-extension/`:
 | P5 Open Source | ✅ Done | docs, CI/CD, skill install |
 | P6 Browser | ✅ Done | gmind serve, Chrome extension |
 | P7 LLM Engine | ✅ Done | ask, enrich, auto-extract, capture |
-| P8 macOS App | ✅ Done | Menu bar, Quick Add, Ask AI |
-| P9 Taotie | ✅ Done | Full-computer scan, ingest queue, folder watch |
+| P8 macOS SwiftUI prototype | Archived | Legacy menu bar prototype backed up outside the repo |
+| P9 Taotie | ✅ Done | Scan, classification, queue, history, watcher config |
+| P10 Tauri desktop app | In progress | Tray app installs CLI, bundles backend, manages serve |
+
+Implementation notes:
+- CLI `gmind add` only runs LLM extraction when `--auto-extract` is passed.
+- HTTP `/add` currently uses the lower-level add flow and may auto-enrich when LLM is configured.
+- Taotie can scan `.docx` files and classify previews, but `gmind ingest` currently imports `.md`, `.txt`, and `.pdf` only.
+- Watcher support currently stores folder configuration; a standalone background watcher daemon is not part of the current implementation.
+- The legacy SwiftUI macOS app was backed up and removed after the Tauri app became the desktop mainline.
 
 ## LLM Integration (v3)
 
@@ -284,7 +391,7 @@ gmind ask "What do I know about vector databases?"
 # Enrich a page with auto-extracted entities, relations, tags
 gmind enrich vector-databases
 
-# Auto-extract when adding a note
+# Auto-extract when adding a note from CLI
 gmind add "Some content..." --auto-extract
 ```
 
@@ -292,6 +399,7 @@ gmind add "Some content..." --auto-extract
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/health` | GET | Desktop/server health check |
 | `/ask` | POST | LLM Q&A with citations |
 | `/enrich` | POST | Auto-extract entities & relations |
 | `/search` | GET | Vector search (JSON) |
@@ -299,26 +407,40 @@ gmind add "Some content..." --auto-extract
 | `/taotie/queue` | GET | Ingest queue state |
 | `/taotie/queue/start` | POST | Start ingest queue |
 | `/taotie/queue/pause` | POST | Pause ingest queue |
+| `/taotie/queue/clear` | POST | Clear ingest queue |
+| `/taotie/queue/add` | POST | Add files to ingest queue |
+| `/taotie/queue/select` | POST | Select or unselect a queued file |
+| `/taotie/queue/remove` | POST | Remove a queued file and blacklist it |
 | `/taotie/history` | GET | Import history |
+| `/taotie/watcher` | GET | Watched folder configuration |
+| `/taotie/watcher/add` | POST | Add watched folder configuration |
+| `/taotie/watcher/remove` | POST | Remove watched folder configuration |
 
-## macOS Menu Bar App
+## Desktop Tray App
 
-A native SwiftUI menu bar app lives in `gmind-macos/`.
+The cross-platform desktop app lives in `gmind-desktop/`. It is the selected direction for macOS menu bar, Windows notification area, and future Linux tray builds:
+
+- `GMind.app` starts and monitors the local HTTP server.
+- `GMind.app` registers `~/.local/bin/gmind`.
+- Development builds can use the repo `.venv/bin/gmind`; release builds should use the app-bundled backend runtime.
+- Product shape remains menu bar first; auxiliary windows are for settings, diagnostics, Taotie, and deeper workflows.
 
 ```bash
-cd gmind-macos
-# With xcodegen installed:
-xcodegen generate
-open GMind.xcodeproj
+cd gmind-desktop
+npm install
+npm run build
+npm run tauri build -- --bundles app
 ```
 
 Features:
-- 🧠 Menu bar icon (no dock)
-- 📝 Quick Add panel
-- 🧠 Ask AI panel
-- 🍽️ Taotie — full-computer scan & ingest queue
-- ⚙️ Model config (Settings)
-- Auto-starts `gmind serve`
+- Tray/menu bar entry
+- Quick Add panel
+- Ask AI panel
+- Taotie full-computer scan and ingest queue
+- Model config
+- Auto-starts the local GMind server
+
+Migration note: the old SwiftUI app code was archived outside the repo before removal. The Tauri app is now the desktop mainline.
 
 ## License
 

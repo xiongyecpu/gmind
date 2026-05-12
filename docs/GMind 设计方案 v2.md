@@ -5,12 +5,14 @@ tags:
   - project
   - gmind
   - design
-status: active
+status: historical-design
 ---
 
 # GMind — 个人知识大脑
 
 > 替代 gbrain 的轻量级个人知识管理系统。Python + PostgreSQL + 向量搜索 + 知识图谱。
+
+> 状态说明：这是 2026-05-09 的早期设计稿，用于追溯决策背景。当前实现请以仓库根目录的 `README.md`、`AGENTS.md` 和源码为准。本文中关于 `query` 调 LLM、`ingest` 调 LLM、自动 LLM 合并等内容是当时规划，不完全代表当前代码行为。
 
 ## 决策记录
 

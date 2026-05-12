@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError, version
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -12,11 +13,24 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from gmind import add, config, db, embed, enrich, ingest, utils
-from gmind.llm import engine as llm_engine, reason as llm_reason
-from gmind.taotie import Blacklist, IngestHistory, IngestQueue, IngestTask, WatcherConfig, scan_computer
-from gmind.taotie.classifier import classify_file
-from gmind.taotie.scanner import FileInfo
+from gmind import add, config, db, embed, enrich, utils
+from gmind.llm import engine as llm_engine
+from gmind.llm import reason as llm_reason
+from gmind.taotie import (
+    Blacklist,
+    IngestHistory,
+    IngestQueue,
+    IngestTask,
+    WatcherConfig,
+    scan_computer,
+)
+
+
+def _app_version() -> str:
+    try:
+        return version("gmind")
+    except PackageNotFoundError:
+        return "0.0.0-dev"
 
 
 @asynccontextmanager
@@ -90,6 +104,43 @@ async def check_endpoint(request: Request) -> JSONResponse:
     return JSONResponse({"exists": False})
 
 
+async def health_endpoint(request: Request) -> JSONResponse:
+    """GET /health — desktop app health check."""
+    try:
+        cfg = config.load_config()
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "status": "error",
+                "app": "gmind",
+                "version": _app_version(),
+                "message": str(exc),
+            },
+            status_code=503,
+        )
+
+    database_status = "unknown"
+    try:
+        with db.get_conn() as conn:
+            conn.execute("SELECT 1").fetchone()
+        database_status = "ok"
+    except Exception as exc:
+        database_status = f"error: {exc}"
+
+    status_code = 200 if database_status == "ok" else 503
+    return JSONResponse(
+        {
+            "status": "ok" if status_code == 200 else "error",
+            "app": "gmind",
+            "version": _app_version(),
+            "node_name": cfg.node_name,
+            "config_path": str(config.DEFAULT_CONFIG_PATH),
+            "database": database_status,
+        },
+        status_code=status_code,
+    )
+
+
 async def search_endpoint(request: Request) -> JSONResponse:
     """GET /search?q=...&k=5 — vector search returning JSON."""
     query_text = request.query_params.get("q", "")
@@ -155,7 +206,10 @@ async def ask_endpoint(request: Request) -> JSONResponse:
     llm_cfg = cfg.llm
     if not llm_cfg or not llm_cfg.get("provider"):
         return JSONResponse(
-            {"status": "error", "message": "LLM not configured. Add [llm] section to ~/.gmind/config.toml"},
+            {
+                "status": "error",
+                "message": "LLM not configured. Add [llm] section to ~/.gmind/config.toml",
+            },
             status_code=503,
         )
 
@@ -239,7 +293,6 @@ async def recent_endpoint(request: Request) -> JSONResponse:
     """GET /recent?limit=5 — recently updated pages."""
     try:
         limit = int(request.query_params.get("limit", "5"))
-        cfg = config.load_config()
         with db.get_conn() as conn:
             rows = conn.execute(
                 """
@@ -443,7 +496,10 @@ async def taotie_queue_add_endpoint(request: Request) -> JSONResponse:
 
     try:
         q = IngestQueue()
-        tasks = [IngestTask(path=f["path"], size=f.get("size", 0), ext=f.get("ext", "")) for f in files]
+        tasks = [
+            IngestTask(path=f["path"], size=f.get("size", 0), ext=f.get("ext", ""))
+            for f in files
+        ]
         q.add_tasks(tasks)
         return JSONResponse({"status": "ok", "added": len(tasks)})
     except Exception as exc:
@@ -547,6 +603,7 @@ async def taotie_watcher_remove_endpoint(request: Request) -> JSONResponse:
 routes = [
     Route("/add", add_endpoint, methods=["POST"]),
     Route("/check", check_endpoint, methods=["GET"]),
+    Route("/health", health_endpoint, methods=["GET"]),
     Route("/search", search_endpoint, methods=["GET"]),
     Route("/ask", ask_endpoint, methods=["POST"]),
     Route("/enrich", enrich_endpoint, methods=["POST"]),

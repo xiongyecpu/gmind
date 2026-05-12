@@ -42,3 +42,9 @@ htmlcov/
 xcuserdata/
 *.xcuserstate
 
+# Tauri / frontend
+gmind-desktop/.npm-cache/
+gmind-desktop/dist/
+gmind-desktop/node_modules/
+gmind-desktop/src-tauri/gen/
+gmind-desktop/src-tauri/target/

@@ -29,6 +29,18 @@ def load_config(path: Path | None = None) -> Config:
         )
     with cfg_path.open("rb") as f:
         data = tomllib.load(f)
+    llm_config = data.get("llm", {})
+    if not llm_config and any(
+        data.get(key) for key in ("llm_api_key", "llm_model", "llm_base_url")
+    ):
+        llm_config = {
+            "provider": "openai",
+            "openai": {
+                "api_key": data.get("llm_api_key", ""),
+                "model": data.get("llm_model", "gpt-4o-mini"),
+                "base_url": data.get("llm_base_url", "https://api.openai.com/v1"),
+            },
+        }
     return Config(
         database_url=data["database_url"],
         node_name=data.get("node_name", "default"),
@@ -37,7 +49,7 @@ def load_config(path: Path | None = None) -> Config:
         embedding_base_url=data.get(
             "embedding_base_url", "https://api.siliconflow.cn/v1"
         ),
-        llm=data.get("llm", {}),
+        llm=llm_config,
     )
 
 

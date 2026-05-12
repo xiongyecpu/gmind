@@ -2,6 +2,8 @@
 
 > CLI 给 Agent，App 给人。
 
+> 状态说明：这是 macOS App v2 设计稿。当前 SwiftUI App 已实现菜单栏、记一条、问 AI、模型配置、最近列表、Taotie 面板和自动启动 `gmind serve`；未实现完整 Dashboard，也没有仓库内置的全局快捷键注册。快捷入口目前主要由菜单栏触发。
+
 ---
 
 ## 一、产品定位
