@@ -1,0 +1,14 @@
+name: GMind
+targets:
+  GMind:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - GMind
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.gmind.macos
+      INFOPLIST_FILE: Info.plist
+      CODE_SIGN_IDENTITY: ""
+      CODE_SIGN_STYLE: Automatic
+      SWIFT_VERSION: "5.9"
