@@ -117,6 +117,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // keep channel open for async
   }
 
+  if (request.action === 'saveData') {
+    // Popup already extracted content — POST directly to server
+    const payload = {
+      title: request.title || 'Untitled',
+      content: request.content,
+      type: 'source',
+      source: `chrome:${request.url}`,
+    };
+    fetch(`${SERVER_URL}/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(r => r.json())
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ status: 'error', error: err.message }));
+    return true;
+  }
+
   if (request.action === 'saveTab') {
     savePage({
       tabId: request.tabId,

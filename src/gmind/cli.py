@@ -24,8 +24,20 @@ from gmind import (
     sync,
 )
 from gmind.llm import engine as llm_engine, reason as llm_reason
+from gmind.taotie import (
+    Blacklist,
+    IngestHistory,
+    IngestQueue,
+    IngestTask,
+    WatcherConfig,
+    scan_computer,
+)
+from gmind.taotie.classifier import classify_file
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
+
+taotie_app = typer.Typer(help="饕餮盛宴 — 全电脑知识自动发现与入库")
+app.add_typer(taotie_app, name="taotie")
 
 ARG_CONTENT = typer.Argument(..., help="Note content")
 ARG_QUESTION = typer.Argument(..., help="Question to ask")
@@ -107,10 +119,17 @@ def query_cmd(
 
 @app.command(name="enrich")
 def enrich_cmd(
-    slug: str = typer.Argument(..., help="Page slug to enrich"),
+    slug: str = typer.Argument(None, help="Page slug to enrich"),
+    all_pages: bool = typer.Option(False, "--all", "-a", help="Enrich all un-enriched pages"),
 ) -> None:
     """Enrich a page with LLM-extracted entities, relations, summary, and tags."""
-    enrich.run_enrich(slug)
+    if all_pages:
+        enrich.run_enrich_all()
+    elif slug:
+        enrich.run_enrich(slug)
+    else:
+        typer.echo("❌ Provide a slug or use --all")
+        raise typer.Exit(1)
 
 
 @app.command(name="ask")
@@ -270,6 +289,146 @@ def capture_cmd(
         all_agents=all_agents,
     )
 
+
+# ─── Taotie commands ──────────────────────────────────────────────
+
+@taotie_app.command(name="scan")
+def taotie_scan_cmd(
+    classify: bool = typer.Option(True, "--classify", help="Use LLM to classify files"),
+) -> None:
+    """Scan the computer for knowledge files."""
+    typer.echo("🔍 扫描中...")
+    files, folders = scan_computer()
+    typer.echo(f"发现 {len(files)} 个候选文件")
+    typer.echo(f"推荐 {len(folders)} 个监控文件夹")
+
+    if classify:
+        typer.echo("🤖 LLM 分类中...")
+        from gmind.llm import engine as llm_engine
+        cfg = config.load_config()
+        engine = None
+        if cfg.llm and cfg.llm.get("provider"):
+            engine = llm_engine.load_llm_engine(cfg.llm)
+        for f in files:
+            classify_file(f, engine=engine)
+
+    safe = [f for f in files if f.privacy_level == "safe"]
+    sensitive = [f for f in files if f.privacy_level == "sensitive"]
+    private = [f for f in files if f.privacy_level == "private"]
+
+    typer.echo(f"  ✅ 安全: {len(safe)}")
+    typer.echo(f"  ⚠️  敏感: {len(sensitive)}")
+    typer.echo(f"  ⛔ 隐私: {len(private)}")
+
+
+@taotie_app.command(name="queue")
+def taotie_queue_cmd() -> None:
+    """Show current ingest queue status."""
+    q = IngestQueue()
+    state = q.get_state()
+    typer.echo(f"队列状态: {'暂停' if state['paused'] else '运行中'}")
+    typer.echo(f"总计: {state['total']} 个文件")
+    typer.echo(f"待处理: {len(state['pending'])}")
+    typer.echo(f"已完成: {len(state['done'])}")
+    typer.echo(f"错误: {len(state['error'])}")
+
+
+@taotie_app.command(name="start")
+def taotie_start_cmd() -> None:
+    """Start processing the ingest queue."""
+    q = IngestQueue()
+    q.start()
+    typer.echo("🚀 开始入库...")
+
+
+@taotie_app.command(name="pause")
+def taotie_pause_cmd() -> None:
+    """Pause the ingest queue."""
+    q = IngestQueue()
+    q.pause()
+    typer.echo("⏸️ 已暂停")
+
+
+@taotie_app.command(name="resume")
+def taotie_resume_cmd() -> None:
+    """Resume the ingest queue."""
+    q = IngestQueue()
+    q.resume()
+    typer.echo("▶️ 已恢复")
+
+
+@taotie_app.command(name="blacklist")
+def taotie_blacklist_cmd(
+    action: str = typer.Argument("list", help="add / remove / list / clear"),
+    path: str = typer.Argument(None, help="File or pattern path"),
+) -> None:
+    """Manage the blacklist."""
+    bl = Blacklist()
+    if action == "list":
+        data = bl.list_all()
+        typer.echo(f"文件: {len(data.get('files', []))}")
+        for f in data.get("files", []):
+            typer.echo(f"  {f}")
+        typer.echo(f"模式: {len(data.get('patterns', []))}")
+        typer.echo(f"文件夹: {len(data.get('folders', []))}")
+    elif action == "add" and path:
+        bl.add_file(path)
+        typer.echo(f"✅ 已添加: {path}")
+    elif action == "remove" and path:
+        bl.remove_file(path)
+        typer.echo(f"✅ 已移除: {path}")
+    elif action == "clear":
+        bl.clear()
+        typer.echo("✅ 已清空")
+    else:
+        typer.echo("用法: gmind taotie blacklist [add|remove|list|clear] [path]")
+
+
+@taotie_app.command(name="watch")
+def taotie_watch_cmd(
+    action: str = typer.Argument("list", help="add / remove / list / clear"),
+    folder: str = typer.Argument(None, help="Folder path"),
+) -> None:
+    """Manage watched folders."""
+    wc = WatcherConfig()
+    if action == "list":
+        for f in wc.list_all():
+            mode = f"{f['scan_mode']}"
+            if f["scan_mode"] == "interval":
+                mode = f"每 {f['interval_hours']} 小时"
+            elif f["scan_mode"] == "daily":
+                mode = f"每天 {f['daily_time']}"
+            elif f["scan_mode"] == "weekly":
+                days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+                mode = f"每周{days[f['weekly_day']]} {f['weekly_time']}"
+            status = "✅" if f["enabled"] else "⏸️"
+            typer.echo(f"  {status} {f['path']} ({mode})")
+    elif action == "add" and folder:
+        wc.add(folder)
+        typer.echo(f"✅ 已添加监控: {folder}")
+    elif action == "remove" and folder:
+        wc.remove(folder)
+        typer.echo(f"✅ 已移除监控: {folder}")
+    elif action == "clear":
+        wc.clear()
+        typer.echo("✅ 已清空")
+    else:
+        typer.echo("用法: gmind taotie watch [add|remove|list|clear] [folder]")
+
+
+@taotie_app.command(name="history")
+def taotie_history_cmd(
+    limit: int = typer.Option(20, "--limit", "-l"),
+) -> None:
+    """Show import history."""
+    h = IngestHistory()
+    records = h.get_records(limit=limit)
+    for r in records:
+        icon = "✅" if r["status"] == "ok" else "❌"
+        typer.echo(f"{icon} {r['timestamp'][:16]}  {r['path']} → {r['slug']}")
+
+
+# ─── Server ───────────────────────────────────────────────────────
 
 @app.command(name="serve")
 def serve_cmd(

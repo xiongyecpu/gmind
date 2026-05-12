@@ -2,124 +2,76 @@ import SwiftUI
 
 struct QuickAddView: View {
     let onClose: () -> Void
-    
+
     @State private var content = ""
-    @State private var title = ""
-    @State private var source = ""
-    @State private var autoExtract = true
-    @State private var isSubmitting = false
-    @State private var statusMessage = ""
-    @State private var showSuccess = false
-    
+    @State private var isSaving = false
+    @FocusState private var isFocused: Bool
+
     var body: some View {
-        VStack(spacing: 16) {
-            // Header
-            HStack {
-                Text("📝 Quick Add")
-                    .font(.headline)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            
-            // Title
-            TextField("Title (optional)", text: $title)
-                .textFieldStyle(.roundedBorder)
-            
-            // Content
+        VStack(spacing: 0) {
             TextEditor(text: $content)
                 .font(.body)
-                .frame(minHeight: 120)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                )
+                .focusable()
+                .focused($isFocused)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
                 .overlay(
                     Group {
                         if content.isEmpty {
-                            Text("What's on your mind?")
+                            Text("想到了什么？直接贴进来...")
                                 .foregroundStyle(.secondary)
                                 .allowsHitTesting(false)
                         }
                     },
                     alignment: .topLeading
                 )
-            
-            // Source
-            TextField("Source URL (optional)", text: $source)
-                .textFieldStyle(.roundedBorder)
-                .font(.caption)
-            
-            // Options
-            Toggle("Auto-extract entities & tags", isOn: $autoExtract)
-                .font(.caption)
-            
-            // Status
-            if !statusMessage.isEmpty {
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(showSuccess ? .green : .red)
-            }
-            
-            Spacer()
-            
-            // Actions
-            HStack {
-                Button("Cancel") {
-                    onClose()
-                }
-                .keyboardShortcut(.escape, modifiers: [])
-                
-                Spacer()
-                
-                Button(action: submit) {
-                    if isSubmitting {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                    } else {
-                        Text("Save")
-                    }
-                }
-                .keyboardShortcut(.return, modifiers: [.command])
-                .disabled(content.isEmpty || isSubmitting)
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding()
-        .frame(width: 440, height: 340)
-    }
-    
-    private func submit() {
-        isSubmitting = true
-        statusMessage = ""
-        
-        GMindAPI.shared.addPage(content: content, title: title.isEmpty ? nil : title, source: source.isEmpty ? nil : source) { result in
-            DispatchQueue.main.async {
-                isSubmitting = false
-                switch result {
-                case .success(let slug):
-                    showSuccess = true
-                    statusMessage = "✅ Saved as [[\(slug)]]"
-                    // Auto-clear after success
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        content = ""
-                        title = ""
-                        source = ""
-                        statusMessage = ""
-                        onClose()
-                    }
-                case .failure(let error):
-                    showSuccess = false
-                    statusMessage = "❌ \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-}
+                .padding(16)
 
-#Preview {
-    QuickAddView(onClose: {})
+            if isSaving {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .padding(.bottom, 12)
+            } else {
+                Text("⌘↵ 记住")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 12)
+            }
+        }
+        .frame(width: 400, height: 160)
+        .background(.thinMaterial)
+        .onAppear {
+            isFocused = true
+            if let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
+                content = text
+            }
+        }
+        .onExitCommand {
+            onClose()
+        }
+
+        // Hidden button to handle ⌘↵
+        Button("") { save() }
+            .keyboardShortcut(.return, modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+    }
+
+    private func save() {
+        guard !content.isEmpty else { return }
+        isSaving = true
+
+        GMindAPI.shared.addPage(content: content, title: nil, source: nil) { result in
+            DispatchQueue.main.async {
+                isSaving = false
+                switch result {
+                case .success:
+                    NotificationCenter.default.post(name: .init("FlashMenuIcon"), object: nil)
+                    onClose()
+                case .failure(let error):
+                    print("[GMind] save error: \(error)")
+                }
+            }
+        }
+    }
 }

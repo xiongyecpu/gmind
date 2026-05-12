@@ -7,25 +7,27 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		13B5053B51D16BBF4C7C93C2 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6F0F743CC9B1E3C4503186 /* DashboardView.swift */; };
 		6812BE3AA6F3B689E537E726 /* ServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3797EA97C028DD1E959FAD2B /* ServerManager.swift */; };
 		7B8D67AA84E45F6835DAE77A /* GMindAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 971871CBDCF103043F8F8212 /* GMindAPI.swift */; };
-		A491084287CF10AA51006CF3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DA731B28992C10D4393FB9 /* SettingsView.swift */; };
-		A9DBBAE9ECCA857F3B656F0A /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD5E4F06BE618E6EECE3A784 /* MenuBarController.swift */; };
+		85D64EC1DCBE815EBBC8E359 /* AskAIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AEA756D52E869A330821CB /* AskAIView.swift */; };
+		8BAFAF64EF7860A3365BAAC4 /* TaotieView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E32BE8AD50366127A678A6C6 /* TaotieView.swift */; };
+		9BC1B083DA835BDC40775371 /* ModelConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3840D54E1C009A3CFAAD7BD3 /* ModelConfigView.swift */; };
 		B5D8F31702BBC205CC0CFE40 /* QuickAddView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2570C7AA052C32541574DD28 /* QuickAddView.swift */; };
+		C840206A9B5C87BBE3359C80 /* PanelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD7032EAD07254E817DCFEC /* PanelManager.swift */; };
+		D633A5E9AE6F4284894E7BC6 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53EA621A44A6CB1DC3C05E13 /* MenuBarContentView.swift */; };
 		E95E05BE9DB850B20C6B5DD8 /* GMindApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73DE3054EAE9E6994AC03725 /* GMindApp.swift */; };
-		F590F66D3E541E3366D3003D /* QuickSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A815B35119758E9E3797B596 /* QuickSearchView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		03DA731B28992C10D4393FB9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2570C7AA052C32541574DD28 /* QuickAddView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddView.swift; sourceTree = "<group>"; };
+		31AEA756D52E869A330821CB /* AskAIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAIView.swift; sourceTree = "<group>"; };
 		3797EA97C028DD1E959FAD2B /* ServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerManager.swift; sourceTree = "<group>"; };
+		3840D54E1C009A3CFAAD7BD3 /* ModelConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelConfigView.swift; sourceTree = "<group>"; };
+		53EA621A44A6CB1DC3C05E13 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
 		73DE3054EAE9E6994AC03725 /* GMindApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GMindApp.swift; sourceTree = "<group>"; };
+		7AD7032EAD07254E817DCFEC /* PanelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelManager.swift; sourceTree = "<group>"; };
 		971871CBDCF103043F8F8212 /* GMindAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GMindAPI.swift; sourceTree = "<group>"; };
-		A815B35119758E9E3797B596 /* QuickSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSearchView.swift; sourceTree = "<group>"; };
-		BF6F0F743CC9B1E3C4503186 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
-		CD5E4F06BE618E6EECE3A784 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		E32BE8AD50366127A678A6C6 /* TaotieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaotieView.swift; sourceTree = "<group>"; };
 		E370240A07D5F9860AC0E644 /* GMind.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GMind.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -41,14 +43,15 @@
 		82CBA969D8A4A1799B67355B /* GMind */ = {
 			isa = PBXGroup;
 			children = (
-				BF6F0F743CC9B1E3C4503186 /* DashboardView.swift */,
+				31AEA756D52E869A330821CB /* AskAIView.swift */,
 				971871CBDCF103043F8F8212 /* GMindAPI.swift */,
 				73DE3054EAE9E6994AC03725 /* GMindApp.swift */,
-				CD5E4F06BE618E6EECE3A784 /* MenuBarController.swift */,
+				53EA621A44A6CB1DC3C05E13 /* MenuBarContentView.swift */,
+				3840D54E1C009A3CFAAD7BD3 /* ModelConfigView.swift */,
+				7AD7032EAD07254E817DCFEC /* PanelManager.swift */,
 				2570C7AA052C32541574DD28 /* QuickAddView.swift */,
-				A815B35119758E9E3797B596 /* QuickSearchView.swift */,
 				3797EA97C028DD1E959FAD2B /* ServerManager.swift */,
-				03DA731B28992C10D4393FB9 /* SettingsView.swift */,
+				E32BE8AD50366127A678A6C6 /* TaotieView.swift */,
 			);
 			path = GMind;
 			sourceTree = "<group>";
@@ -119,14 +122,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13B5053B51D16BBF4C7C93C2 /* DashboardView.swift in Sources */,
+				85D64EC1DCBE815EBBC8E359 /* AskAIView.swift in Sources */,
 				7B8D67AA84E45F6835DAE77A /* GMindAPI.swift in Sources */,
 				E95E05BE9DB850B20C6B5DD8 /* GMindApp.swift in Sources */,
-				A9DBBAE9ECCA857F3B656F0A /* MenuBarController.swift in Sources */,
+				D633A5E9AE6F4284894E7BC6 /* MenuBarContentView.swift in Sources */,
+				9BC1B083DA835BDC40775371 /* ModelConfigView.swift in Sources */,
+				C840206A9B5C87BBE3359C80 /* PanelManager.swift in Sources */,
 				B5D8F31702BBC205CC0CFE40 /* QuickAddView.swift in Sources */,
-				F590F66D3E541E3366D3003D /* QuickSearchView.swift in Sources */,
 				6812BE3AA6F3B689E537E726 /* ServerManager.swift in Sources */,
-				A491084287CF10AA51006CF3 /* SettingsView.swift in Sources */,
+				8BAFAF64EF7860A3365BAAC4 /* TaotieView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -210,6 +214,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gmind.macos;
 				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.9;
 			};
 			name = Release;
@@ -284,6 +289,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gmind.macos;
 				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.9;
 			};
 			name = Debug;

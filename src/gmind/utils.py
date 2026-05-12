@@ -4,8 +4,25 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shutil
+import subprocess
 
 from pypinyin import lazy_pinyin
+
+
+def notify_macos(title: str, message: str) -> None:
+    """Send a macOS notification via osascript."""
+    if shutil.which("osascript") is None:
+        return
+    script = f'display notification "{message}" with title "{title}"'
+    try:
+        subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass
 
 
 def make_checksum(content: str) -> str:

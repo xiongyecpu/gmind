@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from gmind import add, config, db, utils
+from gmind.utils import notify_macos
 
 
 def run_ingest(
@@ -47,6 +48,8 @@ def run_ingest(
             skipped += 1
 
     typer.echo(f"\nDone: {success} ingested, {skipped} skipped")
+    if success > 0:
+        notify_macos("🧠 GMind", f"导入完成：{success} 个文件")
 
 
 def _ingest_file(file_path: Path, cfg: config.Config, source: str | None) -> str:

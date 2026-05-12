@@ -7,6 +7,7 @@ import sys
 import typer
 
 from gmind import config, db, embed, utils
+from gmind.utils import notify_macos
 
 SIMILARITY_THRESHOLD = 0.92
 
@@ -20,7 +21,7 @@ def add_page(
     source: str | None = None,
     on_duplicate: str | None = None,
     state: str | None = None,
-    auto_extract: bool = False,
+    auto_extract: bool = True,
 ) -> None:
     """Add a page. State defaults to 'raw' for capture/source, 'processed' otherwise."""
     if state is None:
@@ -136,6 +137,7 @@ def add_page(
             ),
         )
         typer.echo(f"✅ Saved as [[{page_slug}]]")
+        notify_macos("🧠 GMind", f"笔记已保存：{page_title}")
 
         # Auto-extract entities and relations via LLM
         if auto_extract:

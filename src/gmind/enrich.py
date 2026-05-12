@@ -175,3 +175,50 @@ def run_enrich(slug: str) -> None:
     typer.echo(f"\n✅ Enriched [[{result['slug']}]]")
     typer.echo(f"   Tags: {', '.join(result['tags'])}")
     typer.echo(f"   Entities: {', '.join(e.get('name', '') for e in result['entities'])}")
+    notify_macos("🧠 GMind", f"知识增强完成：{result['slug']}")
+
+
+def run_enrich_all() -> None:
+    """Enrich all pages that haven't been LLM-enriched yet."""
+    cfg = config.load_config()
+    db.init_pool(cfg.database_url)
+
+    llm_cfg = cfg.llm
+    if not llm_cfg or not llm_cfg.get("provider"):
+        typer.echo("❌ LLM not configured. Add [llm] section to ~/.gmind/config.toml")
+        raise typer.Exit(1)
+
+    engine = llm_engine.load_llm_engine(llm_cfg)
+    if engine is None or not engine.is_available():
+        typer.echo("❌ LLM provider not available")
+        raise typer.Exit(1)
+
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT slug, title
+            FROM pages
+            WHERE llm_enriched = FALSE OR llm_enriched IS NULL
+            ORDER BY updated_at DESC
+            """
+        ).fetchall()
+
+    if not rows:
+        typer.echo("✅ All pages are already enriched.")
+        return
+
+    typer.echo(f"🔬 Found {len(rows)} page(s) to enrich\n")
+    success = 0
+    failed = 0
+
+    for slug, title in rows:
+        try:
+            result = enrich_page(slug, engine=engine, cfg=cfg)
+            typer.echo(f"  ✅ [[{slug}]] — {len(result['entities'])} entities, {len(result['relations'])} relations")
+            success += 1
+        except Exception as exc:
+            typer.echo(f"  ❌ [[{slug}]] — {exc}")
+            failed += 1
+
+    typer.echo(f"\nDone: {success} enriched, {failed} failed")
+    notify_macos("🧠 GMind", f"批量知识增强完成：{success} 个笔记")

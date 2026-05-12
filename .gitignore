@@ -37,3 +37,8 @@ htmlcov/
 
 # Misc
 .DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+
