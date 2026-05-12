@@ -51,7 +51,7 @@ ok "uv: $(uv --version)"
 # ------------------------------------------------------------------
 info "Installing gmind package..."
 cd "$SCRIPT_DIR"
-uv pip install -e "."
+uv tool install -e "."
 ok "gmind package installed"
 
 # Verify binary is available

@@ -1,36 +1,50 @@
 /**
  * Content script — runs in an isolated world on every matched page.
- * Exposes article extraction via Readability + Turndown.
+ * Uses Defuddle for content extraction + Turndown for Markdown conversion.
  */
 
 function extractArticle() {
-  // Clone the document so Readability doesn't mutate the live DOM.
-  const documentClone = document.cloneNode(true);
-  const reader = new Readability(documentClone);
-  const article = reader.parse();
+  // Defuddle clones internally, so we can pass the live document.
+  const defuddle = new Defuddle(document, {
+    removeHiddenElements: true,
+    removeLowScoring: true,
+    standardize: true,
+  });
 
-  if (!article) {
+  const result = defuddle.parse();
+
+  if (!result || !result.content) {
     return null;
   }
 
+  // Convert Defuddle's standardized HTML to Markdown with Turndown.
   const turndownService = new TurndownService({
     headingStyle: 'atx',
     bulletListMarker: '-',
     codeBlockStyle: 'fenced',
   });
 
-  const markdown = turndownService.turndown(article.content);
+  const markdown = turndownService.turndown(result.content);
 
   return {
-    title: article.title,
+    title: result.title,
     markdown: markdown,
     url: location.href,
+    // enriched metadata from Defuddle
+    author: result.author,
+    description: result.description,
+    published: result.published,
+    site: result.site,
+    domain: result.domain,
+    language: result.language,
+    wordCount: result.wordCount,
+    image: result.image,
+    favicon: result.favicon,
   };
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'extract') {
-    // Defer to next tick so the message port stays open for async response.
     setTimeout(() => {
       try {
         const result = extractArticle();

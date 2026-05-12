@@ -237,6 +237,69 @@ A companion browser extension lives in `chrome-extension/`:
 | P4 Maintenance | ✅ Done | stats, lint, export |
 | P5 Open Source | ✅ Done | docs, CI/CD, skill install |
 | P6 Browser | ✅ Done | gmind serve, Chrome extension |
+| P7 LLM Engine | ✅ Done | ask, enrich, auto-extract |
+| P8 macOS App | ✅ Done | Menu bar, Quick Add/Search |
+
+## LLM Integration (v3)
+
+GMind now supports built-in LLM for knowledge extraction and reasoning.
+
+### Configuration
+
+Add to `~/.gmind/config.toml`:
+
+```toml
+[llm]
+provider = "ollama"  # or "openai"
+
+[llm.ollama]
+model = "qwen2.5:7b"
+base_url = "http://localhost:11434"
+
+[llm.openai]
+api_key = "sk-..."
+model = "gpt-4o-mini"
+base_url = "https://api.openai.com/v1"
+```
+
+### Commands
+
+```bash
+# LLM-enhanced Q&A over your knowledge base
+gmind ask "What do I know about vector databases?"
+
+# Enrich a page with auto-extracted entities, relations, tags
+gmind enrich vector-databases
+
+# Auto-extract when adding a note
+gmind add "Some content..." --auto-extract
+```
+
+### HTTP API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ask` | POST | LLM Q&A with citations |
+| `/enrich` | POST | Auto-extract entities & relations |
+| `/search` | GET | Vector search (JSON) |
+
+## macOS Menu Bar App
+
+A native SwiftUI menu bar app lives in `gmind-macos/`.
+
+```bash
+cd gmind-macos
+# With xcodegen installed:
+xcodegen generate
+open GMind.xcodeproj
+```
+
+Features:
+- 🧠 Menu bar icon (no dock)
+- 📝 Quick Add panel
+- 🔍 Quick Search + Ask AI
+- 🚀 Dashboard window
+- Auto-starts `gmind serve`
 
 ## License
 

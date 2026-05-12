@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import stat
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_CONFIG_PATH = Path.home() / ".gmind" / "config.toml"
@@ -18,6 +18,7 @@ class Config:
     embedding_api_key: str = ""
     embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
     embedding_base_url: str = "https://api.siliconflow.cn/v1"
+    llm: dict = field(default_factory=dict)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -36,6 +37,7 @@ def load_config(path: Path | None = None) -> Config:
         embedding_base_url=data.get(
             "embedding_base_url", "https://api.siliconflow.cn/v1"
         ),
+        llm=data.get("llm", {}),
     )
 
 

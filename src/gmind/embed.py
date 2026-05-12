@@ -59,7 +59,7 @@ def _embed_batch(
                 data = resp.json()
                 # Sort by index because API may reorder
                 embeddings = sorted(data["data"], key=lambda x: x["index"])
-                return [item["embedding"] for item in embeddings]
+                return [[float(v) for v in item["embedding"]] for item in embeddings]
         except Exception as exc:
             last_exception = exc
             if attempt < MAX_RETRIES:

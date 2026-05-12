@@ -22,25 +22,29 @@ SCHEMA_SQL = """
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS pages (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slug          TEXT UNIQUE NOT NULL,
-    title         TEXT NOT NULL,
-    aliases       TEXT[] DEFAULT '{}',
-    content       TEXT NOT NULL,
-    page_type     TEXT NOT NULL DEFAULT 'note',
-    frontmatter   JSONB DEFAULT '{}',
-    sources       TEXT[] DEFAULT '{}',
-    tags          TEXT[] DEFAULT '{}',
-    embedding     vector(1024),
-    origin_node   TEXT NOT NULL DEFAULT 'default',
-    status        TEXT NOT NULL DEFAULT 'draft',
-    state         TEXT DEFAULT 'processed',
-    checksum      TEXT NOT NULL,
-    version       INTEGER DEFAULT 1,
-    created_at    TIMESTAMPTZ DEFAULT now(),
-    updated_at    TIMESTAMPTZ DEFAULT now(),
-    created_by    TEXT,
-    updated_by    TEXT
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug              TEXT UNIQUE NOT NULL,
+    title             TEXT NOT NULL,
+    aliases           TEXT[] DEFAULT '{}',
+    content           TEXT NOT NULL,
+    page_type         TEXT NOT NULL DEFAULT 'note',
+    frontmatter       JSONB DEFAULT '{}',
+    sources           TEXT[] DEFAULT '{}',
+    tags              TEXT[] DEFAULT '{}',
+    summary           TEXT,
+    entities          JSONB DEFAULT '[]',
+    llm_enriched      BOOLEAN DEFAULT FALSE,
+    auto_extracted    BOOLEAN DEFAULT FALSE,
+    embedding         vector(1024),
+    origin_node       TEXT NOT NULL DEFAULT 'default',
+    status            TEXT NOT NULL DEFAULT 'draft',
+    state             TEXT DEFAULT 'processed',
+    checksum          TEXT NOT NULL,
+    version           INTEGER DEFAULT 1,
+    created_at        TIMESTAMPTZ DEFAULT now(),
+    updated_at        TIMESTAMPTZ DEFAULT now(),
+    created_by        TEXT,
+    updated_by        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_pages_embedding ON pages
@@ -50,6 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_pages_node ON pages(origin_node);
 CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(page_type);
 CREATE INDEX IF NOT EXISTS idx_pages_state ON pages(state);
 CREATE INDEX IF NOT EXISTS idx_pages_tags ON pages USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_pages_enriched ON pages(llm_enriched);
 
 CREATE TABLE IF NOT EXISTS page_history (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

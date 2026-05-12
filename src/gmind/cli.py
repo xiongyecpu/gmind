@@ -9,6 +9,7 @@ from gmind import (
     capture,
     config,
     db,
+    enrich,
     export,
     graph,
     ingest,
@@ -22,12 +23,14 @@ from gmind import (
     stats,
     sync,
 )
+from gmind.llm import engine as llm_engine, reason as llm_reason
 
 app = typer.Typer(help="GMind — Knowledge graph and vector search engine")
 
 ARG_CONTENT = typer.Argument(..., help="Note content")
 ARG_QUESTION = typer.Argument(..., help="Question to ask")
 ARG_KEYWORD = typer.Argument(..., help="Search keyword")
+ARG_ASK = typer.Argument(..., help="Question to ask the knowledge base")
 
 
 @app.command()
@@ -67,12 +70,17 @@ def add_cmd(
     on_duplicate: str | None = typer.Option(
         None, "--on-duplicate", help="[a]ppend / [o]verwrite / [i]gnore"
     ),
+    auto_extract: bool = typer.Option(
+        False, "--auto-extract", "-x",
+        help="Auto-extract entities, relations, and tags via LLM",
+    ),
 ) -> None:
     """Add a note to the knowledge base."""
     text = " ".join(content)
     add.add_page(
         text, page_type=type_, title=title, slug=slug,
         source=source, on_duplicate=on_duplicate,
+        auto_extract=auto_extract,
     )
 
 
@@ -95,6 +103,64 @@ def query_cmd(
     """Query with semantic search (retrieval only, no LLM summary)."""
     text = " ".join(question)
     query.run_query(text, top_k=top_k)
+
+
+@app.command(name="enrich")
+def enrich_cmd(
+    slug: str = typer.Argument(..., help="Page slug to enrich"),
+) -> None:
+    """Enrich a page with LLM-extracted entities, relations, summary, and tags."""
+    enrich.run_enrich(slug)
+
+
+@app.command(name="ask")
+def ask_cmd(
+    question: list[str] = ARG_ASK,
+    top_k: int = typer.Option(8, "--top-k", "-k", help="Number of context pages"),
+    temperature: float = typer.Option(0.3, "--temperature", "-t", help="LLM temperature"),
+) -> None:
+    """Ask a question with LLM-enhanced reasoning over the knowledge base."""
+    text = " ".join(question)
+    cfg = config.load_config()
+
+    llm_cfg = cfg.llm
+    if not llm_cfg or not llm_cfg.get("provider"):
+        typer.echo("❌ LLM not configured. Add [llm] section to ~/.gmind/config.toml")
+        typer.echo("")
+        typer.echo("Example:")
+        typer.echo('  [llm]')
+        typer.echo('  provider = "ollama"')
+        typer.echo('  [llm.ollama]')
+        typer.echo('  model = "qwen2.5:7b"')
+        typer.echo('  base_url = "http://localhost:11434"')
+        raise typer.Exit(1)
+
+    engine = llm_engine.load_llm_engine(llm_cfg)
+    if engine is None:
+        typer.echo("❌ Failed to initialize LLM engine.")
+        raise typer.Exit(1)
+
+    if not engine.is_available():
+        typer.echo("❌ LLM provider is not available.")
+        if llm_cfg.get("provider") == "ollama":
+            typer.echo("   Make sure Ollama is running: ollama serve")
+        raise typer.Exit(1)
+
+    db.init_pool(cfg.database_url)
+    typer.echo(f"🤔 Thinking: {text}\n")
+
+    try:
+        result = llm_reason.reasoned_query(text, engine, cfg, top_k=top_k, temperature=temperature)
+    except Exception as exc:
+        typer.echo(f"❌ Error: {exc}")
+        raise typer.Exit(1)
+
+    typer.echo(result["answer"])
+    typer.echo("")
+    if result["sources"]:
+        typer.echo("Sources:")
+        for src in result["sources"]:
+            typer.echo(f"  • [[{src['slug']}]] {src['title']} ({src['relevance']})")
 
 
 @app.command(name="sync")

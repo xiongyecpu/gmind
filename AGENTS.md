@@ -1,132 +1,184 @@
 # GMind — AI 编码代理项目指南
 
-> 本文档面向 AI 编码代理。阅读前须知：本项目目前**仅包含设计文档**，尚无实际可运行的源代码。
+> 本文档面向 AI 编码代理。
 
 ---
 
 ## 项目概述
 
-GMind 是一个面向知识工作者的开源知识库 CLI 工具，基于 PostgreSQL + pgvector 构建，目标是通过向量搜索和知识图谱将碎片化的笔记、阅读材料与思考串联成可查询、可探索的知识网络。
+GMind 是一个面向知识工作者的开源知识库 CLI 工具，基于 PostgreSQL + pgvector 构建，通过向量搜索和知识图谱将碎片化的笔记、阅读材料与思考串联成可查询、可探索的知识网络。
 
-**当前状态**：极早期设计阶段。仓库中仅有 `README.md`（设计规格书）和 `LICENSE`（Apache 2.0），无源代码、无构建配置、无测试。
+**当前状态**：P8 完成（v3）。已有完整的 CLI、HTTP API、Chrome Extension、macOS 菜单栏应用（SwiftUI），以及内置 LLM 引擎。
 
 ---
 
-## 仓库现状
+## 仓库结构
 
 ```
 .
-├── LICENSE          # Apache License 2.0
-├── README.md        # 项目设计文档（含架构图、CLI 命令设计、数据库 Schema 规划、技术栈选型、路线图）
-└── AGENTS.md        # 本文件
+├── src/gmind/              # Python 后端核心
+│   ├── cli.py              # Typer CLI 入口
+│   ├── server.py           # Starlette HTTP API
+│   ├── db.py               # PostgreSQL + pgvector
+│   ├── config.py           # TOML 配置管理
+│   ├── embed.py            # Embedding API (SiliconFlow)
+│   ├── add.py              # 添加笔记
+│   ├── query.py            # 纯向量检索
+│   ├── search.py           # 向量搜索 (JSON/agent)
+│   ├── graph.py            # 知识图谱操作
+│   ├── enrich.py           # LLM 知识增强
+│   └── llm/                # 新增：LLM 引擎
+│       ├── engine.py       # Provider 抽象 (Ollama/OpenAI)
+│       ├── cache.py        # SQLite 响应缓存
+│       ├── extract.py      # 实体/关系提取
+│       └── reason.py       # 检索+推理问答
+├── gmind-macos/            # 新增：SwiftUI 菜单栏应用
+│   ├── GMind/              # Swift 源码
+│   ├── Info.plist
+│   └── project.yml         # XcodeGen 配置
+├── chrome-extension/       # Chrome 插件 (Manifest V3)
+├── tests/                  # pytest 测试
+├── skills/                 # Agent skills (gmind-cli)
+├── pyproject.toml          # uv 打包配置
+└── README.md               # 项目文档
 ```
-
-**关键事实**：
-- 无 `pyproject.toml`、`setup.py`、`setup.cfg` 或任何其他 Python 包配置文件。
-- 无源码目录（如 `src/`、`gmind/`）。
-- 无测试目录或测试框架配置。
-- 无 CI/CD 配置（如 `.github/workflows/`）。
-- 无数据库迁移脚本、Dockerfile、或其他部署制品。
-- Git 历史仅 3 个 commit，全部集中在文档撰写。
 
 ---
 
-## 设计意图（来自 README.md）
+## 技术栈
 
-以下信息全部来源于 `README.md` 中的设计规划，**尚未落地实现**：
-
-### 技术栈规划
-
-| 组件 | 选型 | 理由 |
-|------|------|------|
-| 语言 | Python 3.12+ | 开发效率 |
-| CLI 框架 | Typer | 简洁优雅，自带 help |
-| 数据库 | PostgreSQL + pgvector | 向量搜索原生支持 |
-| Migration | Alembic | schema 版本管理 |
-| Embedding | SiliconFlow Qwen 4B，维度 1024 | MRL 截断，质量损失小 |
-| LLM | 可配置（OpenAI 兼容接口） | 摄入、查询总结、合并冲突 |
-| 打包 | uv + pyproject.toml | 现代 Python 打包 |
-| 测试 | pytest + testcontainers-python | 真实 PG 测试 |
-
-### 架构设计
-
-- **单库 + status 列** 方案：所有节点共享同一个 PostgreSQL 数据库，通过 `origin_node` 列标识物理节点，`status` 列区分 `draft` / `published` / `merge_review`。
-- 核心表（规划中）：`pages`、`page_history`、`edges`、`sync_log`。
-- `pages.embedding` 使用 `vector(1024)` 并建立 HNSW 索引。
-
-### 规划中的 CLI 命令
-
-```bash
-gmind init --node <name>          # 初始化节点配置
-gmind add <content>               # 添加笔记（自动去重、自动 embedding）
-gmind add --type entity ...       # 添加结构化页面
-gmind query <question>            # 语义查询（向量搜索 + LLM 总结）
-gmind search --json <keyword>     # 快速搜索（JSON 输出，适合 Agent 调用）
-gmind graph <slug> --depth <n>    # 查看知识图谱
-gmind sync                        # 多节点同步（冲突检测 + LLM 合并）
-gmind merge --manual <slug> ...   # 手动合并/回退
-gmind stats                       # 统计看板
-```
-
-### 开发路线图
-
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| **P0 核心** | init → add → embed → query | 🚧 进行中（尚未提交代码） |
-| **P1 同步** | status 列 + publish + 冲突检测 + LLM 合并 | 📋 待开始 |
-| **P2 摄入** | ingest 文件/PDF + LLM 提取 + 去重 | 📋 待开始 |
-| **P3 图谱** | 链接提取 + edges + graph 查询 | 📋 待开始 |
-| **P4 维护** | lint + export + stats + 安全加固 | 📋 待开始 |
-| **P5 开源** | README + 文档 + GitHub Actions CI | 📋 待开始 |
+| 组件 | 选型 |
+|------|------|
+| 后端 | Python 3.12+, Typer, Starlette, psycopg, pgvector |
+| Embedding | SiliconFlow / OpenAI-compatible (BAAI/bge-m3) |
+| LLM | Ollama (本地) 或 OpenAI-compatible (远程) |
+| 缓存 | SQLite (LLM 响应缓存) |
+| macOS App | SwiftUI, AppKit NSStatusBar |
+| 打包 | uv + pyproject.toml |
+| 测试 | pytest |
 
 ---
 
-## 构建与测试
-
-**当前无可执行的构建或测试流程。**
-
-根据 `README.md` 中的规划，未来预期的开发工作流为：
+## CLI 命令
 
 ```bash
-# 安装依赖（规划）
+gmind init --node <name>              # 初始化
+gmind add "content" [--auto-extract]  # 添加笔记（可选 LLM 自动提取）
+gmind search "keyword" --json         # 向量搜索
+gmind query "question"                # 纯检索（无 LLM）
+gmind ask "question"                  # LLM 增强问答（v3 新增）
+gmind enrich <slug>                   # LLM 知识增强（v3 新增）
+gmind sync                            # 同步
+gmind graph <slug> --depth 2          # 知识图谱
+gmind stats                           # 统计
+gmind serve --port 8765               # HTTP 服务器
+```
+
+## HTTP API 端点
+
+| 端点 | 说明 |
+|------|------|
+| POST /add | 添加笔记 |
+| GET /check?source=... | 检查 URL 是否已保存 |
+| GET /search?q=...&k=5 | 向量搜索 |
+| POST /ask | LLM 问答 |
+| POST /enrich | LLM 知识增强 |
+
+---
+
+## 数据库 Schema
+
+核心表：`pages`, `page_history`, `edges`, `sync_log`
+
+`pages` 关键列：
+- `embedding vector(1024)` — 向量嵌入
+- `status` (draft/published/merge_review)
+- `origin_node` — 多节点标识
+- `tags TEXT[]` — 标签
+- `summary TEXT` — LLM 生成摘要（v3）
+- `entities JSONB` — LLM 提取实体（v3）
+- `llm_enriched BOOLEAN` — 是否已 LLM 增强（v3）
+
+`edges` 关键列：
+- `link_type` (related/mentions/semantic)
+- `confidence FLOAT`
+- `source` (manual/llm_extract)
+
+---
+
+## 配置
+
+`~/.gmind/config.toml`:
+
+```toml
+database_url = "postgresql://..."
+node_name = "home"
+embedding_api_key = "sk-..."
+embedding_model = "BAAI/bge-m3"
+
+[llm]                                   # v3 新增
+provider = "ollama"                     # or "openai"
+
+[llm.ollama]
+model = "qwen2.5:7b"
+base_url = "http://localhost:11434"
+```
+
+---
+
+## 开发工作流
+
+```bash
+# 安装依赖
 uv pip install -e ".[dev]"
 
-# 运行测试（规划）
+# 检查代码
+ruff check src/ tests/
+
+# 运行测试
 pytest
+
+# 本地运行
+source .venv/bin/activate
+gmind serve --port 8765
+
+# macOS App
+cd gmind-macos
+xcodegen generate
+open GMind.xcodeproj
 ```
 
 ---
 
-## 代码风格与约定
+## LLM 模块架构
 
-**尚未形成。** 由于无源代码，目前不存在任何代码风格指南、lint 配置（如 ruff、black、mypy）或命名约定。
+```
+src/gmind/llm/
+├── engine.py       # LLMEngine 统一入口，Provider 协议
+│   ├── OllamaProvider    # 本地 Ollama
+│   └── OpenAIProvider    # OpenAI / SiliconFlow / DeepSeek
+├── cache.py        # SQLite 缓存（7 天 TTL）
+├── extract.py      # 实体/关系/摘要/标签提取
+└── reason.py       # retrieve → build context → LLM answer
+```
 
-建议未来参照 Python 社区标准：
-- 使用 `ruff` 进行代码格式化和 lint。
-- 使用 `mypy` 进行类型检查（Typer 对类型注解有良好支持）。
-- 采用 `src/` 目录布局（如 `src/gmind/`）。
+新增 LLM 功能时：
+1. 在 `llm/` 下添加新模块
+2. 在 `server.py` 添加端点
+3. 在 `cli.py` 添加命令
+4. 在 `enrich.py` 集成到知识增强流程
 
 ---
 
-## 安全注意事项
+## 代码风格
 
-以下安全策略在 `README.md` 中有提及，但**尚未在代码中实现**：
-
-- 配置文件计划存放于 `~/.gmind/config.toml`，目标权限 `chmod 600`。
-- PostgreSQL 连接计划强制 `sslmode=require`。
-- 项目定位为**单用户系统**，不计划做多租户隔离。
-
----
-
-## 给 AI 代理的建议
-
-1. **不要假设代码存在**：在修改任何功能前，先确认相关文件是否已创建。
-2. **以 README 为设计规格书**：若用户要求实现功能，README 中描述的 CLI 接口和数据库设计是当前最权威的参考。
-3. **从 P0 开始**：核心闭环（init → add → embed → query）是验证架构的最小可行路径。
-4. **优先创建基础设施**：建议首先添加 `pyproject.toml`、源码目录结构和 pytest 测试框架，再迭代业务功能。
+- ruff: line-length=100, target=py312
+- 类型注解：全部使用 (from __future__ import annotations)
+- 模块命名：小写下划线
+- 数据库操作：使用参数化查询 (`%s` + tuple)
 
 ---
 
 ## License
 
-Apache License 2.0
+MIT

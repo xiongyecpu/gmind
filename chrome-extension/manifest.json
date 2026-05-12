@@ -5,7 +5,8 @@
   "description": "Save web pages to your GMind knowledge base with one click.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "scripting"
   ],
   "host_permissions": [
     "http://localhost:8765/*"
@@ -31,7 +32,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["lib/readability.js", "lib/turndown.js", "content.js"],
+      "js": ["lib/defuddle.js", "lib/turndown.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

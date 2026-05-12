@@ -20,6 +20,7 @@ def add_page(
     source: str | None = None,
     on_duplicate: str | None = None,
     state: str | None = None,
+    auto_extract: bool = False,
 ) -> None:
     """Add a page. State defaults to 'raw' for capture/source, 'processed' otherwise."""
     if state is None:
@@ -135,3 +136,21 @@ def add_page(
             ),
         )
         typer.echo(f"✅ Saved as [[{page_slug}]]")
+
+        # Auto-extract entities and relations via LLM
+        if auto_extract:
+            from gmind import enrich as enrich_mod
+            from gmind.llm import engine as llm_engine_mod
+
+            llm_cfg = cfg.llm
+            if llm_cfg and llm_cfg.get("provider"):
+                engine = llm_engine_mod.load_llm_engine(llm_cfg)
+                if engine and engine.is_available():
+                    try:
+                        enrich_mod.enrich_page(page_slug, engine=engine, cfg=cfg)
+                    except Exception as exc:
+                        typer.echo(f"⚠️  Auto-extract failed: {exc}")
+                else:
+                    typer.echo("⚠️  LLM not available, skipping auto-extract")
+            else:
+                typer.echo("⚠️  LLM not configured, skipping auto-extract")
