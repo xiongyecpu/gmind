@@ -288,5 +288,5 @@ Think of it as: gmind is your memory retrieval, not the user's. You query your m
 | P5 Open Source | Done | docs, CI |
 | P6 Browser | Done | gmind serve, Chrome extension |
 | P7 LLM Engine | Done | ask, enrich, capture, auto-extract |
-| P8 macOS App | Done | Menu bar, Quick Add, Ask AI, model config |
+| P8 Desktop App | In progress | Electron menu bar app, Quick Add, Ask AI, model config |
 | P9 Taotie | Done | Scan, classification, ingest queue, history, watcher config |

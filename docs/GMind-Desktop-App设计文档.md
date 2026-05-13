@@ -1,7 +1,7 @@
-# GMind macOS / Desktop App 化设计文档
+# GMind Desktop App 设计文档
 
-> 状态：已确认 Tauri 路线，第一版实现中。  
-> Status: Tauri has been selected; the first desktop version is being implemented.
+> 状态：已切换到 Electron 路线，第一版实现中。<br>
+> Status: Electron has been selected; the first desktop version is being implemented.
 
 ## 1. 目标 / Goal
 
@@ -19,20 +19,13 @@ GMind 的产品入口从“用户手动安装 CLI + 手动启动 server”切到
 
 | 决策 | 结论 |
 |------|------|
-| 桌面框架 | Tauri v2 |
+| 桌面框架 | Electron |
 | macOS 形态 | 菜单栏 / tray-first app，默认不显示 Dock 图标 |
 | Windows 后续形态 | notification area / system tray app |
 | 后端核心 | 继续使用 Python CLI + Starlette HTTP API |
 | CLI 注册 | App 自动写入 `~/.local/bin/gmind` shim |
 | server 生命周期 | App 启动时自动启动，App 退出时停止由 App 启动的 server |
 | 用户配置 | 保留 `~/.gmind/config.toml`，不静默删除或覆盖 |
-| 旧 SwiftUI app | 已备份并从仓库移除 |
-
-旧 SwiftUI 代码备份位置：
-
-```text
-/Users/xiongye/neal/gmind-backups/gmind-macos-legacy-20260513-062131.tar.gz
-```
 
 ## 3. 当前实现 / Current Implementation
 
@@ -41,22 +34,21 @@ GMind 的产品入口从“用户手动安装 CLI + 手动启动 server”切到
 ├── gmind-desktop/
 │   ├── index.html              # App shell
 │   ├── src/
-│   │   ├── main.js             # UI state, HTTP API calls, Tauri commands
+│   │   ├── main.js             # UI state, HTTP API calls, Electron bridge commands
 │   │   └── styles.css          # Tray app UI
-│   └── src-tauri/
-│       ├── src/main.rs         # Tauri tray, CLI registration, server lifecycle
-│       ├── tauri.conf.json     # App bundle and macOS LSUIElement config
-│       └── icons/
+│   └── src/electron/
+│       ├── main.cjs            # Electron tray, CLI registration, server lifecycle
+│       └── preload.cjs         # Safe renderer bridge
 ├── src/gmind/server.py         # Starlette API, includes /health
 └── src/gmind/config.py         # GMind config and LLM config compatibility
 ```
 
-第一版 App 已覆盖旧版 macOS 菜单栏功能：
+第一版 App 覆盖的核心功能：
 
 - 概览：统计与近期状态
 - 记一条：快速添加笔记
-- 问 AI：优先 `/ask`，失败时降级到 `/search`
-- 饕餮盛宴：扫描、队列、启动/暂停入库
+- 问一下：优先 `/ask`，失败时降级到 `/search`
+- 知识雷达：扫描、队列、启动/暂停入库
 - 模型配置：在 App 内编辑 `~/.gmind/config.toml` 的 LLM 配置
 - 诊断：server 状态、CLI 状态、重启 server、修复 CLI
 
@@ -66,11 +58,11 @@ GMind 的产品入口从“用户手动安装 CLI + 手动启动 server”切到
 ┌─────────────────────────────────────────────────────────┐
 │                     GMind.app                            │
 │                                                         │
-│  Tauri UI                                               │
+│  Electron UI                                            │
 │  - Tray/menu bar                                        │
-│  - Quick Add / Ask AI / Taotie / Settings / Diagnostics │
+│  - 记一条 / 问一下 / 知识雷达 / 设置 / 诊断              │
 │                                                         │
-│  Rust app services                                      │
+│  Node app services                                      │
 │  - Server lifecycle                                     │
 │  - CLI registration                                     │
 │  - Config read/write                                    │
@@ -86,7 +78,7 @@ GMind 的产品入口从“用户手动安装 CLI + 手动启动 server”切到
       CLI shim managed by GMind.app
 ```
 
-开发模式下，Tauri App 会优先使用当前 repo 的 `.venv/bin/gmind`。正式发布时，目标是把后端 runtime 或 CLI sidecar 放进 App bundle，让干净机器无需手动安装 Python 包。
+开发模式下，Electron App 会优先使用当前 repo 的 `.venv/bin/gmind`。正式发布时，目标是把后端 runtime 或 CLI helper 放进 App bundle，让干净机器无需手动安装 Python 包。
 
 ## 5. CLI 注册 / CLI Registration
 
@@ -135,7 +127,7 @@ GET /health
 
 ## 7. 用户数据与清理边界 / Data Safety
 
-“清理旧 GMind”只清理旧 App 代码、旧构建产物、旧进程和旧 CLI shim，不清理知识库数据。
+项目清理只清理废弃 App 代码、旧构建产物、旧进程和 App 管理的 CLI shim，不清理知识库数据。
 
 必须保留：
 
@@ -146,8 +138,7 @@ GET /health
 
 可以清理：
 
-- `gmind-macos/` 旧 SwiftUI 源码目录（已备份后删除）
-- Xcode DerivedData / 临时构建产物
+- 临时构建产物
 - 旧的 `gmind serve` 进程
 - App 管理范围内的旧 `~/.local/bin/gmind` symlink/shim
 

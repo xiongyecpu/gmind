@@ -4,183 +4,326 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GMind</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <aside class="sidebar">
-        <section class="brand">
-          <div class="mark">G</div>
-          <div>
-            <h1>GMind</h1>
-            <p id="status-line">正在连接知识库...</p>
-          </div>
-        </section>
-
-        <nav class="nav">
-          <button class="nav-item active" data-tab="home">概览</button>
-          <button class="nav-item" data-tab="quick-add">记一条</button>
-          <button class="nav-item" data-tab="ask">问 AI</button>
-          <button class="nav-item" data-tab="taotie">饕餮盛宴</button>
-          <button class="nav-item" data-tab="settings">模型配置</button>
-          <button class="nav-item" data-tab="diagnostics">诊断</button>
-        </nav>
-      </aside>
-
-      <section class="content">
-        <section id="tab-home" class="tab active">
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">Knowledge Base</p>
-              <h2>今天的知识库</h2>
+    <aside class="popover" aria-label="GMind">
+      <section class="view active" data-view="home">
+        <div class="inner">
+          <header class="top">
+            <div class="brand">
+              <img src="icon.png" alt="GMind" />
+              <div>
+                <h1>GMind</h1>
+                <p id="status-line" class="status">正在连接知识库...</p>
+              </div>
             </div>
-            <span id="server-pill" class="pill">Checking</span>
+            <div id="server-pill" class="health"><span class="health-dot"></span>检查中</div>
           </header>
 
-          <div class="metric-grid">
-            <article class="metric">
-              <span>笔记</span>
+          <section class="stats" aria-label="知识库状态">
+            <div class="stat">
+              <span>今天</span>
+              <strong id="today-count">-</strong>
+            </div>
+            <div class="stat">
+              <span>知识</span>
               <strong id="page-count">-</strong>
-            </article>
-            <article class="metric">
+            </div>
+            <div class="stat">
               <span>连接</span>
               <strong id="edge-count">-</strong>
-            </article>
-            <article class="metric">
-              <span>LLM 增强</span>
-              <strong id="enriched-count">-</strong>
-            </article>
-          </div>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h3>最近</h3>
-              <button class="ghost" id="refresh-home">刷新</button>
             </div>
-            <div id="recent-list" class="list empty">暂无最近内容</div>
           </section>
-        </section>
 
-        <section id="tab-quick-add" class="tab">
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">Quick Add</p>
-              <h2>记一条</h2>
+          <section class="section" aria-label="记一条">
+            <div class="section-head">
+              <div class="section-title"><span class="signal"></span>记一条</div>
+              <span class="hint">⌘ Enter</span>
             </div>
-          </header>
-          <textarea id="quick-content" class="composer" placeholder="想到了什么？直接贴进来..."></textarea>
-          <footer class="toolbar">
-            <span id="quick-message" class="hint"></span>
-            <button id="save-note">记住</button>
-          </footer>
-        </section>
+            <div class="note-box">
+              <textarea id="quick-content" placeholder="写下一个想法、摘录或链接..."></textarea>
+            </div>
+            <div class="action-row">
+              <span id="quick-message" class="hint">会自动整理标签和关联</span>
+              <button id="save-note">记一条</button>
+            </div>
+          </section>
 
-        <section id="tab-ask" class="tab">
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">Ask AI</p>
-              <h2>问你的知识库</h2>
+          <section class="section" aria-label="问一下">
+            <div class="section-head">
+              <div class="section-title"><span class="signal ask"></span>问一下</div>
+              <span class="hint">从你的知识里找答案</span>
             </div>
-          </header>
-          <div class="ask-bar">
-            <input id="ask-input" placeholder="输入问题，按回车问 AI 或搜索" />
-            <button id="ask-button">提问</button>
-          </div>
-          <div id="ask-message" class="hint"></div>
-          <section id="answer-box" class="answer empty">答案会出现在这里</section>
-        </section>
+            <div class="ask-row">
+              <input id="ask-input" placeholder="我最近关于桌面 app 有哪些想法？" />
+              <button id="ask-button">提问</button>
+            </div>
+          </section>
 
-        <section id="tab-taotie" class="tab">
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">Taotie</p>
-              <h2>饕餮盛宴</h2>
+          <section class="section" aria-label="知识雷达">
+            <div class="section-head">
+              <div class="section-title"><span class="signal radar"></span>知识雷达</div>
+              <span class="hint">隐私内容默认跳过</span>
             </div>
-            <button id="scan-button">开始扫描</button>
-          </header>
-          <div class="split">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>扫描结果</h3>
-                <span id="scan-count" class="hint"></span>
+            <div class="radar-row">
+              <div class="radar-copy">
+                <strong id="radar-summary">点击查看可入库内容</strong>
+                <span id="radar-subtitle" class="hint">Documents、Desktop、Downloads</span>
               </div>
-              <div id="scan-list" class="list empty">点击开始扫描全电脑</div>
-              <footer class="toolbar">
-                <button id="queue-selected" class="secondary">加入队列</button>
-              </footer>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h3>入库队列</h3>
-                <div class="button-row">
-                  <button id="queue-start" class="ghost">开始</button>
-                  <button id="queue-pause" class="ghost">暂停</button>
-                </div>
-              </div>
-              <div id="queue-list" class="list empty">暂无队列</div>
-            </section>
-          </div>
-        </section>
-
-        <section id="tab-settings" class="tab">
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">Settings</p>
-              <h2>模型配置</h2>
+              <button class="secondary" data-go="radar">查看</button>
             </div>
-          </header>
-          <form id="model-form" class="form">
-            <label>
-              <span>Provider</span>
-              <select id="provider">
-                <option value="openai">SiliconFlow / OpenAI</option>
+          </section>
+
+          <section class="recent" aria-label="最近记下">
+            <div class="recent-title">
+              <span>最近记下</span>
+              <button class="ghost" data-go="recent">全部</button>
+            </div>
+            <div id="recent-list" class="recent-list"></div>
+          </section>
+        </div>
+
+        <footer class="footer">
+          <span>本地优先 · 数据留在你的电脑</span>
+          <button class="ghost" data-go="settings">设置</button>
+        </footer>
+      </section>
+
+      <section class="view" data-view="ask">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>问一下</h2>
+            <p>基于你的知识库回答，不够确定时会给来源</p>
+          </div>
+          <button id="copy-answer" class="ghost">复制</button>
+        </header>
+        <div class="inner">
+          <section class="section">
+            <div class="ask-row">
+              <input id="ask-input-page" placeholder="输入问题..." />
+              <button id="ask-button-page">提问</button>
+            </div>
+          </section>
+          <section id="answer-box" class="answer-card empty">答案会出现在这里</section>
+          <section id="source-list" class="source-list"></section>
+        </div>
+      </section>
+
+      <section class="view" data-view="radar">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>知识雷达</h2>
+            <p>先确认范围，再把有价值的内容加入知识库</p>
+          </div>
+          <button id="scan-button" class="ghost">扫描</button>
+        </header>
+        <div class="inner">
+          <section class="scope-grid" aria-label="扫描范围">
+            <div class="scope"><strong>Documents</strong><span>默认</span></div>
+            <div class="scope"><strong>Desktop</strong><span>默认</span></div>
+            <div class="scope"><strong>Downloads</strong><span>默认</span></div>
+          </section>
+          <section class="mini-tabs">
+            <button id="scan-count" class="active">可加入 -</button>
+            <button>已跳过</button>
+            <button>队列</button>
+          </section>
+          <section id="scan-list" class="file-list empty">点击「扫描」发现本机知识文件</section>
+          <section class="file-actions">
+            <button id="queue-selected">加入选中文件</button>
+            <button id="queue-start" class="secondary">开始入库</button>
+            <button id="queue-pause" class="ghost">暂停</button>
+          </section>
+          <section id="queue-list" class="source-list"></section>
+        </div>
+      </section>
+
+      <section class="view" data-view="recent">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>最近记下</h2>
+            <p>确认内容已经进入知识库</p>
+          </div>
+          <button id="refresh-home" class="ghost">刷新</button>
+        </header>
+        <div class="inner">
+          <section id="recent-list-page" class="source-list"></section>
+        </div>
+      </section>
+
+      <section class="view" data-view="settings">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>设置</h2>
+            <p>先配置两套必需模型，再使用知识库</p>
+          </div>
+          <button class="ghost" data-go="home">完成</button>
+        </header>
+        <div class="inner">
+          <section class="model-card">
+            <div class="model-top">
+              <h3>向量化模型</h3>
+              <p>用于记一条、搜索和相似内容匹配</p>
+              <div class="model-state">
+                <span class="required">必填</span>
+                <span id="embedding-state" class="hint">未配置</span>
+              </div>
+            </div>
+            <button data-go="embedding-config">添加</button>
+          </section>
+
+          <section class="model-card">
+            <div class="model-top">
+              <h3>推理模型</h3>
+              <p>用于问一下、摘要、标签和关系提取</p>
+              <div class="model-state">
+                <span class="required">必填</span>
+                <span id="reasoning-state" class="hint">未配置</span>
+              </div>
+            </div>
+            <button data-go="reasoning-config">添加</button>
+          </section>
+
+          <section class="settings-list">
+            <article class="setting-row">
+              <div>
+                <strong>知识库</strong>
+                <span id="settings-kb-state">正在检查...</span>
+              </div>
+              <span class="health">本地</span>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>知识雷达</strong>
+                <span>扫描 Documents、Desktop、Downloads</span>
+              </div>
+              <button class="secondary" data-go="radar">范围</button>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>诊断</strong>
+                <span>服务、CLI、日志和端口状态</span>
+              </div>
+              <button class="ghost" data-go="diagnostics">打开</button>
+            </article>
+          </section>
+          <p id="settings-message" class="hint"></p>
+        </div>
+      </section>
+
+      <section class="view" data-view="embedding-config">
+        <header class="subhead">
+          <button class="back" data-go="settings" aria-label="返回">‹</button>
+          <div>
+            <h2>添加向量化模型</h2>
+            <p>完成后，GMind 才能保存和搜索知识</p>
+          </div>
+          <button class="ghost" data-go="settings">取消</button>
+        </header>
+        <form id="embedding-form" class="inner">
+          <section class="config-note">推荐使用 OpenAI-compatible 服务。模型维度需要和数据库一致，当前知识库使用 1024 维。</section>
+          <section class="config-form">
+            <label class="field">
+              <span>服务商</span>
+              <input id="embedding-provider" value="SiliconFlow / OpenAI compatible" />
+            </label>
+            <label class="field">
+              <span>模型名称</span>
+              <input id="embedding-model" placeholder="BAAI/bge-m3" />
+            </label>
+            <label class="field">
+              <span>Base URL</span>
+              <input id="embedding-base-url" placeholder="https://api.siliconflow.cn/v1" />
+            </label>
+            <label class="field">
+              <span>API Key</span>
+              <input id="embedding-api-key" type="password" placeholder="粘贴你的 API Key" />
+            </label>
+            <div class="file-actions">
+              <button type="submit">保存配置</button>
+              <button type="button" class="secondary">测试连接</button>
+            </div>
+          </section>
+        </form>
+      </section>
+
+      <section class="view" data-view="reasoning-config">
+        <header class="subhead">
+          <button class="back" data-go="settings" aria-label="返回">‹</button>
+          <div>
+            <h2>添加推理模型</h2>
+            <p>完成后，GMind 才能回答和自动整理</p>
+          </div>
+          <button class="ghost" data-go="settings">取消</button>
+        </header>
+        <form id="reasoning-form" class="inner">
+          <section class="config-note">推理模型负责「问一下」、摘要、标签和关系提取。可以使用远程 OpenAI-compatible 服务，也可以使用本地 Ollama。</section>
+          <section class="config-form">
+            <label class="field">
+              <span>服务商</span>
+              <select id="reasoning-provider">
+                <option value="openai">OpenAI compatible</option>
                 <option value="ollama">Ollama 本地</option>
               </select>
             </label>
-            <label>
-              <span>Model</span>
-              <input id="model" />
+            <label class="field">
+              <span>模型名称</span>
+              <input id="reasoning-model" placeholder="deepseek-ai/DeepSeek-V4-Flash" />
             </label>
-            <label id="api-key-row">
-              <span>API Key</span>
-              <input id="api-key" type="password" />
-            </label>
-            <label>
+            <label class="field">
               <span>Base URL</span>
-              <input id="base-url" />
+              <input id="reasoning-base-url" placeholder="https://api.siliconflow.cn/v1" />
             </label>
-            <footer class="toolbar">
-              <span id="settings-message" class="hint"></span>
-              <button type="submit">保存</button>
-            </footer>
-          </form>
-        </section>
-
-        <section id="tab-diagnostics" class="tab">
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">Diagnostics</p>
-              <h2>运行状态</h2>
-            </div>
-          </header>
-          <section class="panel">
-            <div class="row">
-              <span>HTTP Server</span>
-              <strong id="diag-server">Checking</strong>
-            </div>
-            <div class="row">
-              <span>CLI</span>
-              <strong id="diag-cli">Checking</strong>
-            </div>
-            <p id="diag-message" class="hint"></p>
-            <div class="toolbar">
-              <button id="restart-server" class="secondary">重启服务</button>
-              <button id="refresh-diagnostics" class="ghost">刷新</button>
+            <label id="reasoning-key-row" class="field">
+              <span>API Key</span>
+              <input id="reasoning-api-key" type="password" placeholder="粘贴你的 API Key" />
+            </label>
+            <div class="file-actions">
+              <button type="submit">保存配置</button>
+              <button type="button" class="secondary">测试连接</button>
             </div>
           </section>
-        </section>
+        </form>
       </section>
-    </main>
-    <script src="/main.js"></script>
+
+      <section class="view" data-view="diagnostics">
+        <header class="subhead">
+          <button class="back" data-go="settings" aria-label="返回">‹</button>
+          <div>
+            <h2>诊断</h2>
+            <p>给排障使用，默认不打扰普通用户</p>
+          </div>
+          <button id="refresh-diagnostics" class="ghost">刷新</button>
+        </header>
+        <div class="inner">
+          <section class="settings-list">
+            <article class="setting-row">
+              <div>
+                <strong>本地服务</strong>
+                <span id="diag-server">Checking</span>
+              </div>
+              <span class="health">HTTP</span>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>命令行接口</strong>
+                <span id="diag-cli">Checking</span>
+              </div>
+              <span class="health">CLI</span>
+            </article>
+          </section>
+          <p id="diag-message" class="hint"></p>
+          <button id="restart-server" class="secondary">重启服务</button>
+        </div>
+      </section>
+    </aside>
+
+    <div id="toast" class="toast" hidden><span class="health-dot"></span><span id="toast-text">已加入知识库</span></div>
+    <script src="main.js"></script>
   </body>
 </html>

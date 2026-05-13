@@ -4,7 +4,7 @@
 
 > A personal knowledge base backed by PostgreSQL + pgvector. Semantic search, multi-node sync, knowledge graph, batch file ingestion, and optional built-in LLM reasoning.
 >
-> Desktop direction: GMind is now moving to a Tauri-based tray app. The app registers the `gmind` CLI and manages the local HTTP server automatically.
+> Desktop direction: GMind is now moving to an Electron-based menu bar app. The app registers the `gmind` CLI and manages the local HTTP server automatically.
 
 ## Features
 
@@ -182,7 +182,7 @@ Target runtime architecture:
 ┌─────────────────────────────────────────────────────────┐
 │                     GMind.app                            │
 │                                                         │
-│  Tauri UI                                               │
+│  Electron UI                                            │
 │  - Tray/menu bar entry / panels / settings              │
 │                                                         │
 │  App services                                           │
@@ -200,9 +200,9 @@ Target runtime architecture:
       CLI shim managed by GMind.app
 ```
 
-The Tauri app currently registers a managed CLI shim, starts `gmind serve`, exposes settings/diagnostics, and keeps the app as the primary local product entry. Release packaging will move the backend from a development CLI path to an app-bundled backend runtime.
+The Electron app currently registers a managed CLI shim, starts `gmind serve`, exposes settings/diagnostics, and keeps the app as the primary local product entry. Release packaging will move the backend from a development CLI path to an app-bundled backend runtime.
 
-macOS remains a menu bar app. The cross-platform concept is a tray/status app: macOS maps to the menu bar extra, Windows maps to the notification area, and Linux maps to the available desktop tray implementation. Tauri is the selected cross-platform shell.
+macOS remains a menu bar app. The cross-platform concept is a tray/status app: macOS maps to the menu bar extra, Windows maps to the notification area, and Linux maps to the available desktop tray implementation. Electron is the selected desktop shell.
 
 ### Memory-First, Optional LLM
 
@@ -232,8 +232,8 @@ Current `edges` schema does not include an `edges.source` column. Source-like pr
 - LLM: Ollama or OpenAI-compatible providers, with SQLite response cache
 - HTTP API: Starlette + uvicorn
 - Browser: Chrome Extension (Manifest V3, Defuddle + Turndown)
-- Desktop app: Tauri v2 tray/status app with Rust process management and HTML/CSS/JS UI
-- Packaging: uv + pyproject.toml for backend development; Tauri app bundle for desktop
+- Desktop app: Electron tray/status app with Node process management and HTML/CSS/JS UI
+- Packaging: uv + pyproject.toml for backend development; Electron app bundle for desktop
 - Testing: pytest + GitHub Actions CI
 
 ## Repository Layout
@@ -247,9 +247,9 @@ Current `edges` schema does not include an `edges.source` column. Source-like pr
 │   ├── config.py               # ~/.gmind/config.toml loading/saving
 │   ├── llm/                    # LLM providers, cache, extraction, reasoning
 │   └── taotie/                 # File scan, classification, ingest queue, watcher config
-├── gmind-desktop/              # Tauri tray app, selected cross-platform desktop shell
+├── gmind-desktop/              # Electron tray app, selected cross-platform desktop shell
 │   ├── src/                    # Web UI for tray panels and settings
-│   └── src-tauri/              # Rust app shell, tray, sidecar, CLI registration
+│   └── src/electron/           # Electron app shell, tray, server/CLI management
 ├── chrome-extension/           # Chrome extension that talks to localhost:8765
 ├── docs/                       # Design notes and migration plans
 ├── skills/                     # Agent skill definitions
@@ -263,8 +263,8 @@ Planned App packaging layout:
 GMind.app/
   Contents/
     MacOS/
-      gmind-desktop            # Tauri app executable
-      gmind-cli                # App-bundled CLI launcher
+      GMind                    # Electron app executable
+      gmind                    # App-bundled CLI launcher
     Resources/
       backend/                 # Bundled Python backend/runtime artifacts
       cli-shim-template        # Template for ~/.local/bin/gmind
@@ -349,16 +349,15 @@ A companion browser extension lives in `chrome-extension/`:
 | P5 Open Source | ✅ Done | docs, CI/CD, skill install |
 | P6 Browser | ✅ Done | gmind serve, Chrome extension |
 | P7 LLM Engine | ✅ Done | ask, enrich, auto-extract, capture |
-| P8 macOS SwiftUI prototype | Archived | Legacy menu bar prototype backed up outside the repo |
 | P9 Taotie | ✅ Done | Scan, classification, queue, history, watcher config |
-| P10 Tauri desktop app | In progress | Tray app installs CLI, bundles backend, manages serve |
+| P10 Electron desktop app | In progress | Tray app installs CLI, bundles backend, manages serve |
 
 Implementation notes:
 - CLI `gmind add` only runs LLM extraction when `--auto-extract` is passed.
 - HTTP `/add` currently uses the lower-level add flow and may auto-enrich when LLM is configured.
 - Taotie can scan `.docx` files and classify previews, but `gmind ingest` currently imports `.md`, `.txt`, and `.pdf` only.
 - Watcher support currently stores folder configuration; a standalone background watcher daemon is not part of the current implementation.
-- The legacy SwiftUI macOS app was backed up and removed after the Tauri app became the desktop mainline.
+- Electron is the desktop mainline.
 
 ## LLM Integration (v3)
 
@@ -423,24 +422,24 @@ The cross-platform desktop app lives in `gmind-desktop/`. It is the selected dir
 - `GMind.app` starts and monitors the local HTTP server.
 - `GMind.app` registers `~/.local/bin/gmind`.
 - Development builds can use the repo `.venv/bin/gmind`; release builds should use the app-bundled backend runtime.
-- Product shape remains menu bar first; auxiliary windows are for settings, diagnostics, Taotie, and deeper workflows.
+- Product shape remains menu bar first; auxiliary windows are for settings, diagnostics, Knowledge Radar, and deeper workflows.
 
 ```bash
 cd gmind-desktop
 npm install
 npm run build
-npm run tauri build -- --bundles app
+npm run electron:build
 ```
 
 Features:
 - Tray/menu bar entry
 - Quick Add panel
 - Ask AI panel
-- Taotie full-computer scan and ingest queue
+- Knowledge Radar full-computer scan and ingest queue
 - Model config
 - Auto-starts the local GMind server
 
-Migration note: the old SwiftUI app code was archived outside the repo before removal. The Tauri app is now the desktop mainline.
+Electron is now the only desktop app implementation kept in the repository.
 
 ## License
 

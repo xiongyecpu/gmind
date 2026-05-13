@@ -1,0 +1,1096 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GMind Menu Popover Prototype</title>
+    <style>
+      /*
+        Huashu junior pass
+        Assumptions:
+        - This is the primary everyday Mac menu bar surface, not a dashboard.
+        - The user is non-technical, so system health is expressed in natural language.
+        - The production Electron app will later map these sections to live API state.
+        Reasoning:
+        - Keep "记一条" first and fastest.
+        - Keep settings/diagnostics quiet.
+        - Rename Taotie to "知识雷达" in user-facing UI.
+      */
+      :root {
+        --gm-ink: #17211d;
+        --gm-muted: #617068;
+        --gm-paper: #f5f7f2;
+        --gm-surface: #ffffff;
+        --gm-line: #dfe6dc;
+        --gm-green: #2e7d5b;
+        --gm-green-soft: #e4f0e9;
+        --gm-blue: #2d6cdf;
+        --gm-blue-soft: #e8eefb;
+        --gm-copper: #c85f32;
+        --gm-copper-soft: #f6e9e2;
+        --gm-yellow: #d6a43a;
+        --gm-danger: #b84a3c;
+        --gm-shadow: 0 24px 70px rgba(23, 33, 29, 0.18), 0 4px 18px rgba(23, 33, 29, 0.08);
+        color-scheme: light;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+        background: #d9e2da;
+        color: var(--gm-ink);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: start center;
+        padding-top: 42px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.22)),
+          radial-gradient(circle at 20% 8%, rgba(46,125,91,0.12), transparent 28%),
+          #dbe4dc;
+      }
+
+      .menubar {
+        position: fixed;
+        inset: 0 0 auto;
+        display: flex;
+        height: 28px;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 0 18px;
+        color: rgba(23, 33, 29, 0.72);
+        background: rgba(245, 247, 242, 0.76);
+        border-bottom: 1px solid rgba(23, 33, 29, 0.08);
+        font-size: 12px;
+        backdrop-filter: blur(18px);
+      }
+
+      .menubar-mark {
+        display: grid;
+        width: 20px;
+        height: 20px;
+        place-items: center;
+        border-radius: 7px;
+        background: var(--gm-ink);
+        color: white;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .popover {
+        width: 416px;
+        border: 1px solid rgba(23, 33, 29, 0.12);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--gm-paper) 82%, white);
+        box-shadow: var(--gm-shadow);
+        overflow: hidden;
+      }
+
+      .popover::before {
+        content: "";
+        display: block;
+        width: 14px;
+        height: 14px;
+        margin: -7px auto 0;
+        transform: rotate(45deg);
+        border: 1px solid rgba(23, 33, 29, 0.12);
+        border-right: 0;
+        border-bottom: 0;
+        background: color-mix(in srgb, var(--gm-paper) 82%, white);
+      }
+
+      .inner {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .brand img {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 16px;
+        line-height: 1.15;
+      }
+
+      .status {
+        margin-top: 2px;
+        color: var(--gm-muted);
+        font-size: 12px;
+      }
+
+      .health {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 5px 9px;
+        color: var(--gm-green);
+        background: var(--gm-green-soft);
+        font-size: 12px;
+        font-weight: 680;
+      }
+
+      .health-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 99px;
+        background: currentColor;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1.2fr;
+        gap: 1px;
+        overflow: hidden;
+        border: 1px solid var(--gm-line);
+        border-radius: 10px;
+        background: var(--gm-line);
+      }
+
+      .stat {
+        display: grid;
+        gap: 4px;
+        padding: 10px 11px;
+        background: rgba(255, 255, 255, 0.68);
+      }
+
+      .stat span {
+        color: var(--gm-muted);
+        font-size: 11px;
+      }
+
+      .stat strong {
+        font-size: 17px;
+        line-height: 1;
+      }
+
+      .section {
+        border: 1px solid var(--gm-line);
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 11px 0;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 740;
+      }
+
+      .signal {
+        width: 7px;
+        height: 18px;
+        border-radius: 99px;
+        background: var(--gm-copper);
+      }
+
+      .signal.ask {
+        background: var(--gm-blue);
+      }
+
+      .signal.radar {
+        background: var(--gm-green);
+      }
+
+      .hint {
+        color: var(--gm-muted);
+        font-size: 12px;
+      }
+
+      textarea,
+      input {
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--gm-ink);
+        font: inherit;
+      }
+
+      .note-box {
+        min-height: 78px;
+        padding: 10px 11px 4px;
+      }
+
+      textarea {
+        min-height: 48px;
+        resize: none;
+        line-height: 1.45;
+      }
+
+      textarea::placeholder,
+      input::placeholder {
+        color: color-mix(in srgb, var(--gm-muted) 72%, transparent);
+      }
+
+      .action-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 8px 8px 11px;
+      }
+
+      button {
+        min-height: 30px;
+        border: 0;
+        border-radius: 8px;
+        padding: 0 11px;
+        color: white;
+        background: var(--gm-green);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 720;
+      }
+
+      .secondary {
+        color: var(--gm-ink);
+        background: color-mix(in srgb, var(--gm-ink) 8%, transparent);
+      }
+
+      .ghost {
+        color: var(--gm-muted);
+        background: transparent;
+      }
+
+      .ask-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 8px 10px 11px;
+      }
+
+      .ask-row button {
+        background: var(--gm-blue);
+      }
+
+      .radar-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 11px;
+      }
+
+      .radar-copy {
+        display: grid;
+        gap: 3px;
+      }
+
+      .radar-copy strong {
+        font-size: 13px;
+      }
+
+      .recent {
+        display: grid;
+        gap: 7px;
+      }
+
+      .recent-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--gm-muted);
+        font-size: 12px;
+      }
+
+      .memory {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 9px;
+        min-height: 34px;
+        border-radius: 8px;
+        padding: 7px 9px;
+        background: rgba(255, 255, 255, 0.58);
+      }
+
+      .memory-pin {
+        width: 6px;
+        height: 6px;
+        border-radius: 99px;
+        background: var(--gm-copper);
+      }
+
+      .memory strong {
+        min-width: 0;
+        overflow: hidden;
+        font-size: 12px;
+        font-weight: 640;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .memory time {
+        color: var(--gm-muted);
+        font-size: 11px;
+      }
+
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid var(--gm-line);
+        padding: 10px 14px 12px;
+        color: var(--gm-muted);
+        font-size: 12px;
+      }
+
+      .toast {
+        position: fixed;
+        top: 42px;
+        right: 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgba(46, 125, 91, 0.18);
+        border-radius: 999px;
+        padding: 8px 12px;
+        color: var(--gm-green);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 10px 30px rgba(23, 33, 29, 0.12);
+        font-size: 13px;
+        font-weight: 720;
+        backdrop-filter: blur(16px);
+      }
+
+      .view {
+        display: none;
+      }
+
+      .view.active {
+        display: block;
+      }
+
+      .view .inner {
+        padding-top: 12px;
+      }
+
+      .subhead {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid var(--gm-line);
+        padding: 10px 14px 12px;
+        background: rgba(255, 255, 255, 0.34);
+      }
+
+      .back {
+        display: grid;
+        width: 30px;
+        min-height: 30px;
+        place-items: center;
+        padding: 0;
+        color: var(--gm-ink);
+        background: rgba(23, 33, 29, 0.07);
+        font-size: 17px;
+      }
+
+      .subhead h2 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.15;
+      }
+
+      .subhead p {
+        margin-top: 2px;
+        color: var(--gm-muted);
+        font-size: 12px;
+      }
+
+      .answer-card {
+        display: grid;
+        gap: 10px;
+        border: 1px solid var(--gm-line);
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.74);
+      }
+
+      .answer-card p {
+        color: color-mix(in srgb, var(--gm-ink) 88%, transparent);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .source-list,
+      .file-list,
+      .settings-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .source,
+      .file,
+      .setting-row {
+        display: grid;
+        gap: 4px;
+        border-radius: 10px;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      .source strong,
+      .file strong,
+      .setting-row strong {
+        font-size: 13px;
+      }
+
+      .source span,
+      .file span,
+      .setting-row span {
+        color: var(--gm-muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .file {
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+      }
+
+      .check {
+        display: grid;
+        width: 18px;
+        height: 18px;
+        place-items: center;
+        border: 1px solid color-mix(in srgb, var(--gm-green) 36%, var(--gm-line));
+        border-radius: 5px;
+        color: white;
+        background: var(--gm-green);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .file.skip .check {
+        color: var(--gm-muted);
+        background: transparent;
+        border-color: var(--gm-line);
+      }
+
+      .file-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-top: 1px solid var(--gm-line);
+        padding-top: 10px;
+      }
+
+      .setting-row {
+        grid-template-columns: 1fr auto;
+        align-items: center;
+      }
+
+      .model-card {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid var(--gm-line);
+        border-radius: 12px;
+        padding: 11px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .model-top {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .model-top h3 {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .model-top p {
+        margin-top: 3px;
+        color: var(--gm-muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .required {
+        border-radius: 999px;
+        padding: 4px 8px;
+        color: var(--gm-copper);
+        background: var(--gm-copper-soft);
+        font-size: 11px;
+        font-weight: 760;
+        white-space: nowrap;
+      }
+
+      .model-state {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .field-grid {
+        display: grid;
+        gap: 7px;
+      }
+
+      .field {
+        display: grid;
+        gap: 4px;
+      }
+
+      .field label {
+        color: var(--gm-muted);
+        font-size: 11px;
+      }
+
+      .field-box {
+        min-height: 32px;
+        border: 1px solid color-mix(in srgb, var(--gm-line) 86%, var(--gm-ink));
+        border-radius: 8px;
+        padding: 7px 9px;
+        background: rgba(245, 247, 242, 0.66);
+        color: var(--gm-ink);
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .config-form {
+        display: grid;
+        gap: 10px;
+        border: 1px solid var(--gm-line);
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .config-note {
+        border-radius: 10px;
+        padding: 10px;
+        color: var(--gm-muted);
+        background: color-mix(in srgb, var(--gm-blue-soft) 70%, white);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .mini-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2px;
+        border: 1px solid var(--gm-line);
+        border-radius: 10px;
+        padding: 2px;
+        background: rgba(255, 255, 255, 0.55);
+      }
+
+      .mini-tabs button {
+        color: var(--gm-muted);
+        background: transparent;
+      }
+
+      .mini-tabs button.active {
+        color: var(--gm-ink);
+        background: white;
+        box-shadow: 0 1px 4px rgba(23, 33, 29, 0.08);
+      }
+
+      .scope-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .scope {
+        display: grid;
+        gap: 3px;
+        border: 1px solid var(--gm-line);
+        border-radius: 10px;
+        padding: 9px;
+        background: rgba(255, 255, 255, 0.58);
+      }
+
+      .scope strong {
+        font-size: 12px;
+      }
+
+      .scope span {
+        color: var(--gm-muted);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="menubar">
+      <span>周三 09:41</span>
+      <span class="menubar-mark">G</span>
+    </div>
+
+    <aside class="popover" aria-label="GMind menu popover prototype">
+      <div class="view active" data-view="home">
+        <div class="inner">
+        <header class="top">
+          <div class="brand">
+            <img src="../src/assets/gmind-mark.svg" alt="GMind" />
+            <div>
+              <h1>GMind</h1>
+              <p class="status">知识库正常 · 刚刚保存过</p>
+            </div>
+          </div>
+          <div class="health"><span class="health-dot"></span>正常</div>
+        </header>
+
+        <section class="stats" aria-label="Knowledge base status">
+          <div class="stat">
+            <span>今天</span>
+            <strong>3 条</strong>
+          </div>
+          <div class="stat">
+            <span>知识</span>
+            <strong>585</strong>
+          </div>
+          <div class="stat">
+            <span>连接</span>
+            <strong>1,643</strong>
+          </div>
+        </section>
+
+        <section class="section" aria-label="记一条">
+          <div class="section-head">
+            <div class="section-title"><span class="signal"></span>记一条</div>
+            <span class="hint">⌘ Enter</span>
+          </div>
+          <div class="note-box">
+            <textarea placeholder="写下一个想法、摘录或链接...">上午想到：GMind 的桌面端应该像一层安静的记忆，不像控制台。</textarea>
+          </div>
+          <div class="action-row">
+            <span class="hint">会自动整理标签和关联</span>
+            <button>记一条</button>
+          </div>
+        </section>
+
+        <section class="section" aria-label="问一下">
+          <div class="section-head">
+            <div class="section-title"><span class="signal ask"></span>问一下</div>
+            <span class="hint">从你的知识里找答案</span>
+          </div>
+          <div class="ask-row">
+            <input placeholder="我最近关于桌面 app 有哪些想法？" />
+            <button data-go="ask">提问</button>
+          </div>
+        </section>
+
+        <section class="section" aria-label="知识雷达">
+          <div class="section-head">
+            <div class="section-title"><span class="signal radar"></span>知识雷达</div>
+            <span class="hint">隐私内容默认跳过</span>
+          </div>
+          <div class="radar-row">
+            <div class="radar-copy">
+              <strong>发现 12 个可能有价值的文件</strong>
+              <span class="hint">Documents、Desktop、Downloads 已扫描</span>
+            </div>
+            <button class="secondary" data-go="radar">查看</button>
+          </div>
+        </section>
+
+        <section class="recent" aria-label="最近记下">
+          <div class="recent-title">
+            <span>最近记下</span>
+            <button class="ghost" data-go="recent">全部</button>
+          </div>
+          <article class="memory">
+            <span class="memory-pin"></span>
+            <strong>菜单栏 app 第一版产品边界</strong>
+            <time>刚刚</time>
+          </article>
+          <article class="memory">
+            <span class="memory-pin"></span>
+            <strong>知识雷达要让用户先控制扫描范围</strong>
+            <time>09:18</time>
+          </article>
+          <article class="memory">
+            <span class="memory-pin"></span>
+            <strong>CLI 是 agent/runtime 接口，不是普通用户入口</strong>
+            <time>昨天</time>
+          </article>
+        </section>
+        </div>
+
+        <footer class="footer">
+          <span>本地优先 · 数据留在你的电脑</span>
+          <button class="ghost" data-go="settings">设置</button>
+        </footer>
+      </div>
+
+      <div class="view" data-view="ask">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>问一下</h2>
+            <p>基于你的知识库回答，不够确定时会给来源</p>
+          </div>
+          <button class="ghost">复制</button>
+        </header>
+        <div class="inner">
+          <section class="section">
+            <div class="ask-row">
+              <input value="我最近关于桌面 app 有哪些想法？" aria-label="问题" />
+              <button>再问</button>
+            </div>
+          </section>
+          <section class="answer-card">
+            <p>你最近的判断很清晰：GMind 的 Mac app 不应该像开发者控制台，而应该是一层安静的记忆入口。主流程是「记一条」和「问一下」，知识雷达负责发现本机里值得保存的内容，设置和诊断要藏到后面。</p>
+            <p>产品边界也已经收敛：桌面 app 给人用，CLI 给 Agent 和高级用户用，后端服务由 app 自动管理。</p>
+          </section>
+          <section class="source-list">
+            <div class="recent-title">
+              <span>相关来源</span>
+              <span>3 条</span>
+            </div>
+            <article class="source">
+              <strong>菜单栏 app 第一版产品边界</strong>
+              <span>相关度 0.91 · 今天 09:33</span>
+            </article>
+            <article class="source">
+              <strong>Electron 桌面主入口和 CLI runtime 接口</strong>
+              <span>相关度 0.86 · 今天 09:12</span>
+            </article>
+            <article class="source">
+              <strong>知识雷达扫描前要给用户控制权</strong>
+              <span>相关度 0.79 · 昨天</span>
+            </article>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" data-view="radar">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>知识雷达</h2>
+            <p>先确认范围，再把有价值的内容加入知识库</p>
+          </div>
+          <button class="ghost">暂停</button>
+        </header>
+        <div class="inner">
+          <section class="scope-grid" aria-label="扫描范围">
+            <div class="scope">
+              <strong>Documents</strong>
+              <span>6 个候选</span>
+            </div>
+            <div class="scope">
+              <strong>Desktop</strong>
+              <span>3 个候选</span>
+            </div>
+            <div class="scope">
+              <strong>Downloads</strong>
+              <span>3 个候选</span>
+            </div>
+          </section>
+          <section class="mini-tabs">
+            <button class="active">可加入 12</button>
+            <button>已跳过 4</button>
+            <button>队列 2</button>
+          </section>
+          <section class="file-list">
+            <article class="file">
+              <span class="check">✓</span>
+              <div>
+                <strong>GMind 桌面端需求.md</strong>
+                <span>Documents/产品 · 18 KB · 看起来是产品思考</span>
+              </div>
+              <button class="ghost">预览</button>
+            </article>
+            <article class="file">
+              <span class="check">✓</span>
+              <div>
+                <strong>AI 知识库对话摘录.txt</strong>
+                <span>Desktop · 9 KB · 可提炼为问答素材</span>
+              </div>
+              <button class="ghost">预览</button>
+            </article>
+            <article class="file">
+              <span class="check">✓</span>
+              <div>
+                <strong>local-first-notes.pdf</strong>
+                <span>Downloads · 2.4 MB · 可能是阅读资料</span>
+              </div>
+              <button class="ghost">预览</button>
+            </article>
+            <article class="file skip">
+              <span class="check"></span>
+              <div>
+                <strong>银行流水-2026.xlsx</strong>
+                <span>已跳过 · 可能包含隐私信息</span>
+              </div>
+              <button class="ghost">说明</button>
+            </article>
+          </section>
+          <div class="file-actions">
+            <button>加入 3 个文件</button>
+            <button class="secondary">调整扫描范围</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" data-view="recent">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>最近记下</h2>
+            <p>确认内容已经进入知识库</p>
+          </div>
+          <button class="ghost">搜索</button>
+        </header>
+        <div class="inner">
+          <section class="source-list">
+            <article class="source">
+              <strong>菜单栏 app 第一版产品边界</strong>
+              <span>刚刚 · note · 自动关联 5 个知识点</span>
+            </article>
+            <article class="source">
+              <strong>知识雷达要让用户先控制扫描范围</strong>
+              <span>09:18 · note · 已提取标签 privacy、desktop</span>
+            </article>
+            <article class="source">
+              <strong>CLI 是 agent/runtime 接口，不是普通用户入口</strong>
+              <span>昨天 · synthesis · 关联到 GMind 产品定位</span>
+            </article>
+            <article class="source">
+              <strong>Electron 保留菜单栏小页面，复杂流程再展开</strong>
+              <span>昨天 · project · 与 Desktop App 设计文档相关</span>
+            </article>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" data-view="settings">
+        <header class="subhead">
+          <button class="back" data-go="home" aria-label="返回">‹</button>
+          <div>
+            <h2>设置</h2>
+            <p>先配置两套必需模型，再使用知识库</p>
+          </div>
+          <button class="ghost">完成</button>
+        </header>
+        <div class="inner">
+          <section class="model-card">
+            <div class="model-top">
+              <h3>向量化模型</h3>
+              <p>用于记一条、搜索和相似内容匹配</p>
+              <div class="model-state">
+                <span class="required">必填</span>
+                <span class="hint">未配置</span>
+              </div>
+            </div>
+            <button data-go="embedding-config">添加</button>
+          </section>
+
+          <section class="model-card">
+            <div class="model-top">
+              <h3>推理模型</h3>
+              <p>用于问一下、摘要、标签和关系提取</p>
+              <div class="model-state">
+                <span class="required">必填</span>
+                <span class="hint">未配置</span>
+              </div>
+            </div>
+            <button data-go="reasoning-config">添加</button>
+          </section>
+
+          <section class="settings-list">
+            <article class="setting-row">
+              <div>
+                <strong>知识库</strong>
+                <span>本机配置正常 · 585 条知识</span>
+              </div>
+              <span class="health">正常</span>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>知识雷达</strong>
+                <span>扫描 Documents、Desktop、Downloads</span>
+              </div>
+              <button class="secondary">范围</button>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>Chrome 插件</strong>
+                <span>用于保存网页和阅读材料</span>
+              </div>
+              <button class="secondary">检查</button>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>诊断</strong>
+                <span>服务、CLI、日志和端口状态</span>
+              </div>
+              <button class="ghost" data-go="diagnostics">打开</button>
+            </article>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" data-view="diagnostics">
+        <header class="subhead">
+          <button class="back" data-go="settings" aria-label="返回">‹</button>
+          <div>
+            <h2>诊断</h2>
+            <p>给排障使用，默认不打扰普通用户</p>
+          </div>
+          <button class="ghost">复制</button>
+        </header>
+        <div class="inner">
+          <section class="settings-list">
+            <article class="setting-row">
+              <div>
+                <strong>本地服务</strong>
+                <span>127.0.0.1:8765 · 已连接</span>
+              </div>
+              <span class="health">Ready</span>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>命令行接口</strong>
+                <span>~/.local/bin/gmind · 由 GMind 管理</span>
+              </div>
+              <span class="health">Installed</span>
+            </article>
+            <article class="setting-row">
+              <div>
+                <strong>日志</strong>
+                <span>~/Library/Logs/GMind/server.log</span>
+              </div>
+              <button class="secondary">打开</button>
+            </article>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" data-view="embedding-config">
+        <header class="subhead">
+          <button class="back" data-go="settings" aria-label="返回">‹</button>
+          <div>
+            <h2>添加向量化模型</h2>
+            <p>这一步完成后，GMind 才能保存和搜索知识</p>
+          </div>
+          <button class="ghost" data-go="settings">取消</button>
+        </header>
+        <div class="inner">
+          <section class="config-note">
+            推荐先使用 OpenAI-compatible 服务。模型维度需要和数据库一致，当前知识库使用 1024 维。
+          </section>
+          <section class="config-form">
+            <div class="field">
+              <label>服务商</label>
+              <div class="field-box">SiliconFlow / OpenAI compatible</div>
+            </div>
+            <div class="field">
+              <label>模型名称</label>
+              <div class="field-box">BAAI/bge-m3</div>
+            </div>
+            <div class="field">
+              <label>Base URL</label>
+              <div class="field-box">https://api.siliconflow.cn/v1</div>
+            </div>
+            <div class="field">
+              <label>API Key</label>
+              <div class="field-box">粘贴你的 API Key</div>
+            </div>
+            <div class="file-actions">
+              <button data-go="settings">保存配置</button>
+              <button class="secondary">测试连接</button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" data-view="reasoning-config">
+        <header class="subhead">
+          <button class="back" data-go="settings" aria-label="返回">‹</button>
+          <div>
+            <h2>添加推理模型</h2>
+            <p>这一步完成后，GMind 才能回答和自动整理</p>
+          </div>
+          <button class="ghost" data-go="settings">取消</button>
+        </header>
+        <div class="inner">
+          <section class="config-note">
+            推理模型负责「问一下」、摘要、标签和关系提取。可以使用远程 OpenAI-compatible 服务，也可以使用本地 Ollama。
+          </section>
+          <section class="config-form">
+            <div class="field">
+              <label>服务商</label>
+              <div class="field-box">OpenAI compatible</div>
+            </div>
+            <div class="field">
+              <label>模型名称</label>
+              <div class="field-box">deepseek-ai/DeepSeek-V4-Flash</div>
+            </div>
+            <div class="field">
+              <label>Base URL</label>
+              <div class="field-box">https://api.siliconflow.cn/v1</div>
+            </div>
+            <div class="field">
+              <label>API Key</label>
+              <div class="field-box">粘贴你的 API Key</div>
+            </div>
+            <div class="file-actions">
+              <button data-go="settings">保存配置</button>
+              <button class="secondary">测试连接</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </aside>
+
+    <div class="toast"><span class="health-dot"></span>已加入知识库</div>
+    <script>
+      const views = [...document.querySelectorAll("[data-view]")];
+      function showView(name) {
+        views.forEach((view) => view.classList.toggle("active", view.dataset.view === name));
+      }
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-go]");
+        if (!target) return;
+        showView(target.dataset.go);
+      });
+    </script>
+  </body>
+</html>

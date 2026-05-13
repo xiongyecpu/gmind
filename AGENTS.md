@@ -8,9 +8,9 @@
 
 GMind 是一个面向知识工作者的开源个人知识库工具，基于 PostgreSQL + pgvector 构建，通过向量搜索、轻量知识图谱和可选 LLM 增强，将碎片化的笔记、阅读材料与思考串联成可查询、可探索、可问答的知识网络。
 
-**当前状态（以代码实现为准）**：v4 / P10 功能线正在落地，包含 CLI、HTTP API、Chrome Extension、Tauri 桌面托盘/菜单栏应用、内置 LLM 引擎，以及饕餮盛宴扫描与入库队列。需要注意：LLM 功能是可选增强；CLI `gmind add` 需要显式 `--auto-extract` 才会自动提取；饕餮 watcher 当前是监听文件夹配置与 API/UI 管理，不是独立常驻 FSEvents 后台进程；`.docx` 当前可被扫描和预览分类，但批量入库正文提取尚未接入 `ingest.py`。
+**当前状态（以代码实现为准）**：v4 / P10 功能线正在落地，包含 CLI、HTTP API、Chrome Extension、Electron 桌面托盘/菜单栏应用、内置 LLM 引擎，以及知识雷达（Taotie）扫描与入库队列。需要注意：LLM 功能是可选增强；CLI `gmind add` 需要显式 `--auto-extract` 才会自动提取；Taotie watcher 当前是监听文件夹配置与 API/UI 管理，不是独立常驻 FSEvents 后台进程；`.docx` 当前可被扫描和预览分类，但批量入库正文提取尚未接入 `ingest.py`。
 
-**文档权威性**：`README.md` 与本文件描述当前实现；`docs/` 下的设计方案是历史方案稿，除非文件顶部另有说明，不应直接当作当前行为。
+**文档权威性**：`README.md`、本文件和 `docs/GMind-Desktop-App设计文档.md` 描述当前实现；`docs/GMind-知识雷达设计文档.md` 描述 Taotie/知识雷达当前设计边界。
 
 ---
 
@@ -30,7 +30,7 @@ GMind 是一个面向知识工作者的开源个人知识库工具，基于 Post
 │   ├── graph.py            # 知识图谱操作
 │   ├── enrich.py           # LLM 知识增强
 │   ├── capture.py          # Agent 会话导入
-│   ├── taotie/             # 饕餮盛宴
+│   ├── taotie/             # 知识雷达（Taotie 后端能力）
 │   │   ├── scanner.py      # 全电脑文件扫描
 │   │   ├── classifier.py   # LLM 隐私分类
 │   │   ├── blacklist.py    # 黑名单管理
@@ -42,9 +42,9 @@ GMind 是一个面向知识工作者的开源个人知识库工具，基于 Post
 │       ├── cache.py        # SQLite 响应缓存
 │       ├── extract.py      # 实体/关系提取
 │       └── reason.py       # 检索+推理问答
-├── gmind-desktop/          # Tauri 桌面托盘/菜单栏应用
+├── gmind-desktop/          # Electron 桌面托盘/菜单栏应用
 │   ├── src/                # HTML/CSS/JS App UI
-│   └── src-tauri/          # Rust shell、tray、server/CLI 管理
+│   └── src/electron/       # Electron shell、tray、server/CLI 管理
 ├── chrome-extension/       # Chrome 插件 (Manifest V3)
 ├── tests/                  # pytest 测试
 ├── skills/                 # Agent skills (gmind-cli)
@@ -62,8 +62,8 @@ GMind 是一个面向知识工作者的开源个人知识库工具，基于 Post
 | Embedding | SiliconFlow / OpenAI-compatible (BAAI/bge-m3) |
 | LLM | Ollama (本地) 或 OpenAI-compatible (远程) |
 | 缓存 | SQLite (LLM 响应缓存) |
-| Desktop App | Tauri v2, Rust, HTML/CSS/JS |
-| 打包 | uv + pyproject.toml, Tauri app bundle |
+| Desktop App | Electron, HTML/CSS/JS |
+| 打包 | uv + pyproject.toml, Electron app bundle |
 | 测试 | pytest |
 
 ---
@@ -175,7 +175,7 @@ gmind serve --port 8765
 # Desktop App
 cd gmind-desktop
 npm run build
-npm run tauri build -- --bundles app
+npm run electron:build
 ```
 
 ---
@@ -216,7 +216,7 @@ git log --oneline -5
 ### 任务所有权
 
 - 开始实质修改前，先在自己的工作说明里明确“本次负责的文件/模块范围”。
-- 多 agent 并行时，文件范围必须尽量互斥。例如一个 agent 负责 `src/gmind/llm/`，另一个负责 `gmind-desktop/src-tauri/`。
+- 多 agent 并行时，文件范围必须尽量互斥。例如一个 agent 负责 `src/gmind/llm/`，另一个负责 `gmind-desktop/src/electron/`。
 - 如果必须改别人正在改的文件，先停下来问用户，或在回复里明确说明冲突风险。
 - 数据库 schema、配置格式、CLI 参数、HTTP API 返回结构属于高影响面变更，不能静默改；必须同步更新 README、AGENTS、skill 文档和测试。
 
@@ -278,7 +278,7 @@ src/gmind/llm/
 1. 在 `taotie/` 下添加新模块
 2. 在 `server.py` 添加 `/taotie/*` 端点
 3. 在 `cli.py` 的 `taotie_app` 下添加命令
-4. 在 `TaotieView.swift` 添加 UI
+4. 在 Electron 桌面端的知识雷达界面添加 UI
 
 ---
 

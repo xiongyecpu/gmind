@@ -1,14 +1,14 @@
 # GMind Desktop
 
-Tauri-based tray/status app for GMind.
+Electron-based tray/status app for GMind.
 
-This is the selected cross-platform desktop direction:
+This is the selected desktop direction:
 
 - macOS: menu bar app
 - Windows: notification area / system tray app
 - Linux: desktop tray where supported
 
-The legacy SwiftUI implementation in `gmind-macos/` stays available until this Tauri app can reliably manage the backend server and CLI.
+The Electron app is the desktop mainline.
 
 ## Current Scope
 
@@ -20,22 +20,24 @@ This first scaffold focuses on platform boundaries:
 - install/repair the `gmind` CLI shim
 - diagnostics panel
 
-The release path will later bundle the Python backend as a Tauri sidecar.
-Tauri's sidecar model is a good fit for GMind because it supports bundling a Python CLI/API server binary so users do not need to install Python, Node.js, or `uv` separately for normal app usage.
+The release path will later bundle the Python backend as an Electron extra resource or packaged helper so users do not need to install Python, Node.js, or `uv` separately for normal app usage.
 
 ## Development
 
 Requirements:
 
 - Node.js
-- Rust toolchain (`cargo`, `rustc`)
 - a working development `gmind` CLI until the sidecar is packaged
 
 ```bash
 cd gmind-desktop
 npm install
 npm run build
-npm run tauri dev
+npm run electron
 ```
 
-This workspace currently cannot be fully verified without Rust installed.
+Build an unsigned macOS app directory:
+
+```bash
+npm run electron:build
+```

@@ -1,19 +1,21 @@
-const tauri = window.__TAURI__;
-const invoke = tauri?.core?.invoke;
-const listen = tauri?.event?.listen;
+const desktop = window.GMindNative;
+const invoke = desktop?.invoke;
+const listen = desktop?.listen;
 const API = "http://127.0.0.1:8765";
 
 const state = {
-  tab: "home",
+  view: "home",
+  recent: [],
   scanFiles: [],
   modelConfig: null,
+  lastAnswer: "",
 };
 
 const $ = (id) => document.getElementById(id);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 function invokeCommand(command, args) {
-  if (!invoke) throw new Error("Tauri bridge is not available");
+  if (!invoke) throw new Error("GMind desktop bridge is not available");
   return invoke(command, args);
 }
 
@@ -31,29 +33,38 @@ async function api(path, options = {}) {
       json = { message: text };
     }
   }
-  if (!response.ok) {
-    throw new Error(json.message || json.error || `HTTP ${response.status}`);
-  }
+  if (!response.ok) throw new Error(json.message || json.error || `HTTP ${response.status}`);
   return json;
 }
 
-function navigate(tab) {
-  state.tab = tab;
-  $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.tab === tab));
-  $$(".tab").forEach((section) => section.classList.toggle("active", section.id === `tab-${tab}`));
+function showView(view) {
+  state.view = view;
+  $$(".view").forEach((node) => node.classList.toggle("active", node.dataset.view === view));
+  window.location.hash = view;
 
-  if (tab === "home") loadHome();
-  if (tab === "taotie") loadQueue();
-  if (tab === "settings") loadModelConfig();
-  if (tab === "diagnostics") loadDiagnostics();
-  if (tab === "quick-add") setTimeout(() => $("quick-content").focus(), 30);
-  if (tab === "ask") setTimeout(() => $("ask-input").focus(), 30);
+  if (view === "home") loadHome();
+  if (view === "radar") loadQueue();
+  if (view === "recent") renderRecentPage();
+  if (view === "settings") loadModelConfig();
+  if (view === "embedding-config") loadModelConfig();
+  if (view === "reasoning-config") loadModelConfig();
+  if (view === "diagnostics") loadDiagnostics();
+  if (view === "ask") setTimeout(() => $("ask-input-page").focus(), 30);
+}
+
+function showToast(message) {
+  $("toast-text").textContent = message;
+  $("toast").hidden = false;
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => {
+    $("toast").hidden = true;
+  }, 2400);
 }
 
 function setServerPill(snapshot) {
-  $("server-pill").textContent = snapshot.status;
   $("server-pill").dataset.state = snapshot.status;
-  $("status-line").textContent = snapshot.status === "Ready" ? "知识库已连接" : snapshot.message;
+  $("server-pill").innerHTML = `<span class="health-dot"></span>${snapshot.status === "Ready" ? "正常" : "异常"}`;
+  $("status-line").textContent = snapshot.status === "Ready" ? "知识库正常" : "知识库暂时不可用";
 }
 
 async function loadHome() {
@@ -67,26 +78,47 @@ async function loadHome() {
   if (stats.status === "fulfilled") {
     $("page-count").textContent = stats.value.pages ?? "-";
     $("edge-count").textContent = stats.value.edges ?? "-";
-    $("enriched-count").textContent = stats.value.llm_enriched ?? "-";
+    $("today-count").textContent = stats.value.recent_7d ?? "-";
+    $("settings-kb-state").textContent = `本机配置正常 · ${stats.value.pages ?? "-"} 条知识`;
   }
   if (recent.status === "fulfilled") {
-    renderRecent(recent.value.results ?? []);
+    state.recent = recent.value.results ?? [];
+    renderRecentPreview();
+    renderRecentPage();
   }
 }
 
-function renderRecent(items) {
+function renderRecentPreview() {
+  const items = state.recent.slice(0, 3);
   const host = $("recent-list");
   if (!items.length) {
-    host.className = "list empty";
-    host.textContent = "暂无最近内容";
+    host.innerHTML = `<article class="memory"><span class="memory-pin"></span><strong>暂无最近内容</strong><time></time></article>`;
     return;
   }
-  host.className = "list";
+  host.innerHTML = items
+    .map((item, index) => `
+      <article class="memory">
+        <span class="memory-pin"></span>
+        <strong>${escapeHtml(item.title || item.slug)}</strong>
+        <time>${index === 0 ? "刚刚" : ""}</time>
+      </article>
+    `)
+    .join("");
+}
+
+function renderRecentPage() {
+  const host = $("recent-list-page");
+  if (!host) return;
+  const items = state.recent;
+  if (!items.length) {
+    host.innerHTML = `<article class="source"><strong>暂无最近内容</strong><span>记一条后会出现在这里</span></article>`;
+    return;
+  }
   host.innerHTML = items
     .map((item) => `
-      <article class="list-item">
+      <article class="source">
         <strong>${escapeHtml(item.title || item.slug)}</strong>
-        <span>${escapeHtml(item.slug || "")}</span>
+        <span>${escapeHtml(item.type || "note")} · ${escapeHtml(item.slug || "")}</span>
       </article>
     `)
     .join("");
@@ -99,23 +131,32 @@ async function saveNote() {
   try {
     const result = await api("/add", {
       method: "POST",
-      body: JSON.stringify({ content, title: "", source: "", type: "note" }),
+      body: JSON.stringify({ content, title: "", source: "gmind-desktop", type: "note" }),
     });
     $("quick-content").value = "";
-    $("quick-message").textContent = `已保存：${result.slug}`;
-    loadHome();
+    $("quick-message").textContent = "会自动整理标签和关联";
+    showToast("已加入知识库");
+    await loadHome();
+    if (result?.slug) $("status-line").textContent = `刚刚保存：${result.slug}`;
   } catch (error) {
-    $("quick-message").textContent = String(error.message || error);
+    $("quick-message").textContent = humanError(error);
   }
 }
 
-async function ask() {
+async function askFromHome() {
   const question = $("ask-input").value.trim();
   if (!question) return;
+  $("ask-input-page").value = question;
+  showView("ask");
+  await ask();
+}
 
-  $("ask-message").textContent = "思考中...";
-  $("answer-box").className = "answer empty";
-  $("answer-box").textContent = "";
+async function ask() {
+  const question = $("ask-input-page").value.trim();
+  if (!question) return;
+  $("answer-box").className = "answer-card empty";
+  $("answer-box").textContent = "思考中...";
+  $("source-list").innerHTML = "";
 
   try {
     const response = await api("/ask", {
@@ -123,133 +164,117 @@ async function ask() {
       body: JSON.stringify({ question, top_k: 8 }),
     });
     renderAnswer(response.answer, response.sources ?? []);
-    $("ask-message").textContent = "";
   } catch (error) {
     const message = String(error.message || error).toLowerCase();
-    if (
-      message.includes("llm not configured") ||
-      message.includes("llm provider not available") ||
-      message.includes("timed out") ||
-      message.includes("request timed out")
-    ) {
-      $("ask-message").textContent = "AI 不可用，已切换为向量搜索结果";
+    if (message.includes("timed out") || message.includes("llm")) {
+      $("answer-box").className = "answer-card";
+      $("answer-box").innerHTML = `<p>推理模型还不能使用。我先帮你找到了相关内容。</p>`;
       await searchFallback(question);
     } else {
-      $("ask-message").textContent = String(error.message || error);
-      $("answer-box").className = "answer empty";
-      $("answer-box").textContent = "没有得到答案";
+      $("answer-box").className = "answer-card empty";
+      $("answer-box").textContent = humanError(error);
     }
   }
 }
 
 async function searchFallback(question) {
   const response = await api(`/search?q=${encodeURIComponent(question)}&k=8`);
-  const results = response.results ?? [];
-  if (!results.length) {
-    $("answer-box").className = "answer empty";
-    $("answer-box").textContent = "没有找到相关结果";
-    return;
-  }
-  $("answer-box").className = "answer";
-  $("answer-box").innerHTML = results
-    .map((item) => `
-      <article class="result">
-        <div>
-          <strong>${escapeHtml(item.title || item.slug)}</strong>
-          <span>${Number(item.similarity ?? 0).toFixed(2)}</span>
-        </div>
-        <p>${escapeHtml(item.preview || "")}</p>
-        <code>${escapeHtml(item.slug || "")}</code>
-      </article>
-    `)
-    .join("");
+  renderSources(response.results ?? []);
 }
 
 function renderAnswer(answer, sources) {
-  $("answer-box").className = "answer";
-  const sourceHtml = sources.length
-    ? `<div class="sources"><h4>来源</h4>${sources
-        .map((src) => `<span>${escapeHtml(src.title || src.slug)} (${Number(src.relevance ?? 0).toFixed(2)})</span>`)
-        .join("")}</div>`
-    : "";
-  $("answer-box").innerHTML = `<p>${escapeHtml(answer || "").replace(/\n/g, "<br>")}</p>${sourceHtml}`;
+  state.lastAnswer = answer || "";
+  $("answer-box").className = "answer-card";
+  $("answer-box").innerHTML = `<p>${escapeHtml(answer || "没有得到答案").replace(/\n/g, "<br>")}</p>`;
+  renderSources(sources);
+}
+
+function renderSources(sources) {
+  if (!sources.length) {
+    $("source-list").innerHTML = "";
+    return;
+  }
+  $("source-list").innerHTML = `
+    <div class="recent-title"><span>相关来源</span><span>${sources.length} 条</span></div>
+    ${sources
+      .map((src) => `
+        <article class="source">
+          <strong>${escapeHtml(src.title || src.slug)}</strong>
+          <span>相关度 ${Number(src.relevance ?? src.similarity ?? 0).toFixed(2)} · ${escapeHtml(src.slug || "")}</span>
+        </article>
+      `)
+      .join("")}
+  `;
 }
 
 async function startScan() {
-  $("scan-list").className = "list empty";
+  $("scan-list").className = "file-list empty";
   $("scan-list").textContent = "扫描中...";
-  $("scan-count").textContent = "";
   try {
     const response = await api("/taotie/scan");
     state.scanFiles = (response.files ?? []).map((file) => ({ ...file, selected: file.should_ingest !== false }));
     renderScan();
   } catch (error) {
-    $("scan-list").textContent = `扫描失败：${error.message || error}`;
+    $("scan-list").textContent = `扫描失败：${humanError(error)}`;
   }
 }
 
 function renderScan() {
   const files = state.scanFiles.filter((file) => file.should_ingest && file.privacy_level !== "private");
-  $("scan-count").textContent = `${files.length} 个文件`;
+  $("scan-count").textContent = `可加入 ${files.length}`;
+  $("radar-summary").textContent = files.length ? `发现 ${files.length} 个可能有价值的文件` : "没有发现可入库文件";
   const host = $("scan-list");
   if (!files.length) {
-    host.className = "list empty";
+    host.className = "file-list empty";
     host.textContent = "没有发现可入库文件";
     return;
   }
-  host.className = "list";
-  host.innerHTML = files.slice(0, 80).map((file, index) => `
-    <label class="list-item check-row">
+  host.className = "file-list";
+  host.innerHTML = files.slice(0, 40).map((file, index) => `
+    <label class="file">
       <input type="checkbox" data-scan-index="${index}" ${file.selected ? "checked" : ""} />
       <div>
         <strong>${escapeHtml(fileName(file.path))}</strong>
-        <span>${escapeHtml(file.path)}</span>
+        <span>${escapeHtml(file.path)} · ${escapeHtml(file.ext || "")}</span>
       </div>
-      <em>${escapeHtml(file.ext || "")}</em>
+      <button type="button" class="ghost">预览</button>
     </label>
   `).join("");
 }
 
 async function queueSelected() {
   const selected = state.scanFiles.filter((file) => file.selected && file.should_ingest !== false);
-  if (!selected.length) return;
+  if (!selected.length) {
+    showToast("请先选择文件");
+    return;
+  }
   await api("/taotie/queue/add", {
     method: "POST",
     body: JSON.stringify({
       files: selected.map((file) => ({ path: file.path, size: file.size ?? 0, ext: file.ext ?? "" })),
     }),
   });
+  showToast(`已加入 ${selected.length} 个文件`);
   await loadQueue();
 }
 
 async function loadQueue() {
   try {
-    const state = await api("/taotie/queue");
-    const sections = [
-      ["当前", state.current ? [state.current] : []],
-      ["待入库", state.pending ?? []],
-      ["完成", state.done ?? []],
-      ["错误", state.error ?? []],
+    const queue = await api("/taotie/queue");
+    const rows = [
+      ...(queue.current ? [{ ...queue.current, label: "当前" }] : []),
+      ...(queue.pending ?? []).map((item) => ({ ...item, label: "待加入" })),
+      ...(queue.done ?? []).map((item) => ({ ...item, label: "完成" })),
+      ...(queue.error ?? []).map((item) => ({ ...item, label: "错误" })),
     ];
-    const rows = sections.flatMap(([label, items]) =>
-      items.map((item) => ({ ...item, label }))
-    );
-    const host = $("queue-list");
-    if (!rows.length) {
-      host.className = "list empty";
-      host.textContent = "暂无队列";
-      return;
-    }
-    host.className = "list";
-    host.innerHTML = rows.slice(0, 80).map((item) => `
-      <article class="list-item">
+    $("queue-list").innerHTML = rows.slice(0, 8).map((item) => `
+      <article class="source">
         <strong>${escapeHtml(fileName(item.path))}</strong>
         <span>${escapeHtml(item.label)} · ${escapeHtml(item.status || "")}</span>
       </article>
     `).join("");
-  } catch (error) {
-    $("queue-list").className = "list empty";
-    $("queue-list").textContent = `队列读取失败：${error.message || error}`;
+  } catch {
+    $("queue-list").innerHTML = "";
   }
 }
 
@@ -257,43 +282,59 @@ async function loadModelConfig() {
   try {
     const config = await invokeCommand("load_model_config");
     state.modelConfig = config;
-    syncModelForm();
-    $("settings-message").textContent = "";
+    syncModelForms();
   } catch (error) {
-    $("settings-message").textContent = String(error.message || error);
+    $("settings-message").textContent = humanError(error);
   }
 }
 
-function syncModelForm() {
+function syncModelForms() {
   const config = state.modelConfig;
   if (!config) return;
-  $("provider").value = config.provider;
+
+  $("embedding-model").value = config.embedding_model || "BAAI/bge-m3";
+  $("embedding-base-url").value = config.embedding_base_url || "https://api.siliconflow.cn/v1";
+  $("embedding-api-key").value = config.embedding_api_key || "";
+  $("embedding-state").textContent = config.embedding_api_key ? "已配置" : "未配置";
+
   const isOllama = config.provider === "ollama";
-  $("model").value = isOllama ? config.ollama_model : config.openai_model;
-  $("base-url").value = isOllama ? config.ollama_base_url : config.openai_base_url;
-  $("api-key").value = config.openai_api_key;
-  $("api-key-row").hidden = isOllama;
+  $("reasoning-provider").value = config.provider || "openai";
+  $("reasoning-model").value = isOllama ? config.ollama_model : config.openai_model;
+  $("reasoning-base-url").value = isOllama ? config.ollama_base_url : config.openai_base_url;
+  $("reasoning-api-key").value = config.openai_api_key || "";
+  $("reasoning-key-row").hidden = isOllama;
+  $("reasoning-state").textContent = isOllama || config.openai_api_key ? "已配置" : "未配置";
 }
 
-async function saveModelConfig(event) {
+async function saveEmbeddingConfig(event) {
   event.preventDefault();
-  const provider = $("provider").value;
+  const next = {
+    ...(state.modelConfig ?? {}),
+    embedding_model: $("embedding-model").value.trim(),
+    embedding_base_url: $("embedding-base-url").value.trim(),
+    embedding_api_key: $("embedding-api-key").value.trim(),
+  };
+  state.modelConfig = await invokeCommand("save_model_config", { config: next });
+  showToast("向量化模型已保存");
+  showView("settings");
+}
+
+async function saveReasoningConfig(event) {
+  event.preventDefault();
+  const provider = $("reasoning-provider").value;
   const current = state.modelConfig ?? {};
   const next = {
+    ...current,
     provider,
-    openai_model: provider === "openai" ? $("model").value : current.openai_model ?? "",
-    openai_api_key: $("api-key").value,
-    openai_base_url: provider === "openai" ? $("base-url").value : current.openai_base_url ?? "",
-    ollama_model: provider === "ollama" ? $("model").value : current.ollama_model ?? "qwen2.5:7b",
-    ollama_base_url: provider === "ollama" ? $("base-url").value : current.ollama_base_url ?? "http://localhost:11434",
+    openai_model: provider === "openai" ? $("reasoning-model").value.trim() : current.openai_model,
+    openai_base_url: provider === "openai" ? $("reasoning-base-url").value.trim() : current.openai_base_url,
+    openai_api_key: $("reasoning-api-key").value.trim(),
+    ollama_model: provider === "ollama" ? $("reasoning-model").value.trim() : current.ollama_model,
+    ollama_base_url: provider === "ollama" ? $("reasoning-base-url").value.trim() : current.ollama_base_url,
   };
-  $("settings-message").textContent = "保存中...";
-  try {
-    state.modelConfig = await invokeCommand("save_model_config", { config: next });
-    $("settings-message").textContent = "已保存";
-  } catch (error) {
-    $("settings-message").textContent = String(error.message || error);
-  }
+  state.modelConfig = await invokeCommand("save_model_config", { config: next });
+  showToast("推理模型已保存");
+  showView("settings");
 }
 
 async function loadDiagnostics() {
@@ -306,7 +347,7 @@ async function loadDiagnostics() {
     $("diag-message").textContent = server.value.message;
   }
   if (cli.status === "fulfilled") {
-    $("diag-cli").textContent = cli.value.installed ? "Installed" : "Missing";
+    $("diag-cli").textContent = cli.value.installed ? `${cli.value.path}` : "未安装";
   }
 }
 
@@ -322,24 +363,41 @@ function fileName(path) {
   return String(path || "").split("/").pop() || path;
 }
 
-$$(".nav-item").forEach((item) => item.addEventListener("click", () => navigate(item.dataset.tab)));
-$("refresh-home").addEventListener("click", loadHome);
+function humanError(error) {
+  return String(error?.message || error || "未知错误");
+}
+
+document.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-go]");
+  if (target) showView(target.dataset.go);
+});
+
 $("save-note").addEventListener("click", saveNote);
 $("quick-content").addEventListener("keydown", (event) => {
   if (event.metaKey && event.key === "Enter") saveNote();
 });
-$("ask-button").addEventListener("click", ask);
+$("ask-button").addEventListener("click", askFromHome);
 $("ask-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") askFromHome();
+});
+$("ask-button-page").addEventListener("click", ask);
+$("ask-input-page").addEventListener("keydown", (event) => {
   if (event.key === "Enter") ask();
+});
+$("copy-answer").addEventListener("click", async () => {
+  await navigator.clipboard.writeText(state.lastAnswer);
+  showToast("答案已复制");
 });
 $("scan-button").addEventListener("click", startScan);
 $("queue-selected").addEventListener("click", queueSelected);
 $("queue-start").addEventListener("click", async () => {
   await api("/taotie/queue/start", { method: "POST", body: "{}" });
+  showToast("已开始入库");
   await loadQueue();
 });
 $("queue-pause").addEventListener("click", async () => {
   await api("/taotie/queue/pause", { method: "POST", body: "{}" });
+  showToast("已暂停");
   await loadQueue();
 });
 $("scan-list").addEventListener("change", (event) => {
@@ -347,27 +405,24 @@ $("scan-list").addEventListener("change", (event) => {
   const visible = state.scanFiles.filter((file) => file.should_ingest && file.privacy_level !== "private");
   if (Number.isFinite(index) && visible[index]) visible[index].selected = event.target.checked;
 });
-$("provider").addEventListener("change", () => {
-  if (!state.modelConfig) return;
-  state.modelConfig.provider = $("provider").value;
-  syncModelForm();
-});
-$("model-form").addEventListener("submit", saveModelConfig);
+$("refresh-home").addEventListener("click", loadHome);
 $("restart-server").addEventListener("click", async () => {
   await invokeCommand("restart_server");
   await loadDiagnostics();
 });
 $("refresh-diagnostics").addEventListener("click", loadDiagnostics);
+$("embedding-form").addEventListener("submit", saveEmbeddingConfig);
+$("reasoning-form").addEventListener("submit", saveReasoningConfig);
+$("reasoning-provider").addEventListener("change", syncModelForms);
 
 if (listen) {
-  listen("navigate", (event) => navigate(event.payload || "home"));
+  listen("navigate", (event) => showView(event.payload || "home"));
 }
 
-const initialTab = window.location.hash.replace("#", "") || "home";
-navigate(initialTab);
+showView(window.location.hash.replace("#", "") || "home");
 setInterval(() => {
-  if (state.tab === "home") loadHome();
-  if (state.tab === "diagnostics") loadDiagnostics();
+  if (state.view === "home") loadHome();
+  if (state.view === "diagnostics") loadDiagnostics();
 }, 8000);
 
-window.GMindDesktop = { navigate };
+window.GMindDesktop = { navigate: showView };

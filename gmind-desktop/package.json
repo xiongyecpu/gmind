@@ -3,13 +3,43 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "src/electron/main.cjs",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev:web": "node scripts/dev-server.mjs",
-    "tauri": "tauri"
+    "electron": "npm run build && electron .",
+    "electron:build": "npm run build && electron-builder --mac dir",
+    "electron:pack": "npm run build && electron-builder --mac zip"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "electron": "^40.10.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "ai.gmind.desktop",
+    "productName": "GMind",
+    "electronVersion": "40.10.0",
+    "electronDist": "node_modules/electron/dist",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "src/electron/**/*",
+      "src/assets/icon.png",
+      "src/assets/gmind-menubar.svg",
+      "src/assets/gmind-menubar.png",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dir"
+      ],
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    },
+    "directories": {
+      "output": "dist-electron"
+    }
   }
 }
-
