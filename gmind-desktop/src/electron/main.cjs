@@ -139,11 +139,14 @@ function serverStatus() {
   return probeServer().then(
     (result) => {
       if (result.kind === "health") {
+        const ready = result.statusCode >= 200 && result.statusCode < 300;
         return {
-          status: "Ready",
+          status: ready ? "Ready" : "Degraded",
           ownership: pid ? "managed" : "external",
           base_url: BASE_URL,
-          message: `GMind server is reachable: ${result.body}`,
+          message: ready
+            ? `GMind server is reachable: ${result.body}`
+            : `GMind server responded but needs attention: ${result.body}`,
           pid,
         };
       }
@@ -165,8 +168,8 @@ function serverStatus() {
       };
     },
     (message) => ({
-      status: "Offline",
-      ownership: "none",
+      status: pid ? "Starting" : "Offline",
+      ownership: pid ? "managed" : "none",
       base_url: BASE_URL,
       message: String(message),
       pid,
@@ -195,7 +198,7 @@ async function startServer() {
     serverChild = null;
   });
 
-  await sleep(900);
+  await waitForServer(9000);
   return serverStatus();
 }
 
@@ -299,10 +302,97 @@ function saveModelConfig(_event, payload) {
   return config;
 }
 
+async function testModelConnection(_event, payload) {
+  const kind = payload?.kind;
+  const config = payload?.config ?? {};
+  if (kind === "embedding") return testEmbeddingConnection(config);
+  if (kind === "reasoning") return testReasoningConnection(config);
+  throw new Error("Unknown model connection kind");
+}
+
+async function testEmbeddingConnection(config) {
+  if (!config.embedding_api_key) throw new Error("请先填写向量化模型 API Key");
+  if (!config.embedding_model) throw new Error("请先填写向量化模型名称");
+  const response = await requestJson({
+    url: joinUrl(config.embedding_base_url || "https://api.siliconflow.cn/v1", "/embeddings"),
+    method: "POST",
+    apiKey: config.embedding_api_key,
+    body: {
+      model: config.embedding_model,
+      input: "GMind connection test",
+    },
+  });
+  if (!Array.isArray(response.data) || !response.data.length) {
+    throw new Error("服务已响应，但没有返回 embedding 数据");
+  }
+  return {
+    ok: true,
+    message: `连接成功，返回 ${response.data[0]?.embedding?.length ?? 0} 维向量`,
+  };
+}
+
+async function testReasoningConnection(config) {
+  const provider = config.provider === "ollama" ? "ollama" : "openai";
+  if (provider === "ollama") return testOllamaConnection(config);
+  return testOpenAiCompatibleConnection(config);
+}
+
+async function testOllamaConnection(config) {
+  const model = config.ollama_model || config.openai_model;
+  if (!model) throw new Error("请先填写 Ollama 模型名称");
+  const response = await requestJson({
+    url: joinUrl(config.ollama_base_url || "http://localhost:11434", "/api/tags"),
+    method: "GET",
+  });
+  const models = Array.isArray(response.models) ? response.models : [];
+  const names = models.map((item) => item.name).filter(Boolean);
+  if (names.length && !names.includes(model)) {
+    return {
+      ok: true,
+      message: `Ollama 可访问，但本机还没有 ${model}`,
+    };
+  }
+  return { ok: true, message: "Ollama 连接成功" };
+}
+
+async function testOpenAiCompatibleConnection(config) {
+  if (!config.openai_api_key) throw new Error("请先填写推理模型 API Key");
+  if (!config.openai_model) throw new Error("请先填写推理模型名称");
+  const response = await requestJson({
+    url: joinUrl(config.openai_base_url || "https://api.siliconflow.cn/v1", "/chat/completions"),
+    method: "POST",
+    apiKey: config.openai_api_key,
+    body: {
+      model: config.openai_model,
+      messages: [{ role: "user", content: "Reply with OK." }],
+      max_tokens: 4,
+      temperature: 0,
+    },
+  });
+  if (!Array.isArray(response.choices)) {
+    throw new Error("服务已响应，但没有返回 chat completion 结果");
+  }
+  return { ok: true, message: "推理模型连接成功" };
+}
+
 async function probeServer() {
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await probeServerOnce();
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await sleep(350);
+    }
+  }
+  throw lastError;
+}
+
+async function probeServerOnce() {
   const health = await requestPath("/health");
-  if (health.statusCode === 200 && health.body.includes('"app":"gmind"')) {
-    return { kind: "health", body: health.body };
+  const healthJson = parseJsonBody(health.body);
+  if (healthJson?.app === "gmind") {
+    return { kind: "health", statusCode: health.statusCode, body: health.body };
   }
   if (health.statusCode === 404) {
     const legacy = await requestPath("/check?source=gmind-desktop-health");
@@ -316,7 +406,7 @@ async function probeServer() {
 
 function requestPath(requestPathname) {
   return new Promise((resolve, reject) => {
-    const request = http.get(`${BASE_URL}${requestPathname}`, { timeout: 1200 }, (response) => {
+    const request = http.get(`${BASE_URL}${requestPathname}`, { timeout: 2500 }, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
@@ -331,6 +421,66 @@ function requestPath(requestPathname) {
     });
     request.on("error", (error) => reject(`Server is not reachable: ${error.message}`));
   });
+}
+
+async function waitForServer(timeoutMs) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = await serverStatus();
+    if (status.status === "Ready" || status.status === "Degraded" || status.status === "Conflict") {
+      return status;
+    }
+    await sleep(500);
+  }
+  return serverStatus();
+}
+
+function parseJsonBody(body) {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+}
+
+async function requestJson({ url, method, apiKey, body }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, {
+      method,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await response.text();
+    let json = {};
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { message: text };
+      }
+    }
+    if (!response.ok) {
+      throw new Error(json.error?.message || json.message || `HTTP ${response.status}`);
+    }
+    return json;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("连接超时");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function joinUrl(baseUrl, pathname) {
+  const base = String(baseUrl || "").replace(/\/+$/, "");
+  const pathPart = String(pathname || "").replace(/^\/+/, "");
+  return `${base}/${pathPart}`;
 }
 
 function resolveGmindCli() {
@@ -522,6 +672,7 @@ ipcMain.handle("cli_status", cliStatus);
 ipcMain.handle("install_cli", installCli);
 ipcMain.handle("load_model_config", loadModelConfig);
 ipcMain.handle("save_model_config", saveModelConfig);
+ipcMain.handle("test_model_connection", testModelConnection);
 
 app.whenReady().then(async () => {
   if (process.platform === "darwin") app.dock.hide();

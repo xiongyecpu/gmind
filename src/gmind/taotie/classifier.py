@@ -9,27 +9,49 @@ from gmind import config
 from gmind.llm import engine as llm_engine
 from gmind.taotie.scanner import FileInfo
 
+CLASSIFY_PROMPT = """你是 GMind 的「知识雷达」分类器。
+请判断以下文件是否值得自动知识化后存入个人知识库。
 
-CLASSIFY_PROMPT = """判断以下文件是否适合作为个人知识库存入。
+GMind 存的不是“所有文件”，而是对未来思考、检索、写作、决策、复盘有复用价值的个人记忆和知识材料。
 
 文件路径：{filepath}
 内容预览：
 {preview}
 
-判断规则：
-1. 是否包含密码、密钥、Token、API Key？
-2. 是否包含身份证号、手机号、银行卡号等个人隐私？
-3. 是否包含公司内部机密或商业敏感信息？
-4. 内容是否有知识价值（笔记、文档、文章、思考、会话记录）？
+必须入库的典型内容：
+- 笔记、读书摘录、研究材料、项目方案、会议纪要、复盘、TODO 背后的思考
+- AI/Agent 会话中包含的需求、决策、设计讨论、实现线索
+- 用户自己写的文章、长文草稿、知识整理、学习记录
+- 可被摘要、打标签、抽实体关系，并且未来可能被问答检索复用的内容
+
+不要入库的典型内容：
+- 安装包说明、系统日志、构建输出、报错堆栈、缓存、纯配置、临时文件
+- 发票、账单、报销、银行流水、快递、身份证扫描件、合同扫描件等事务/凭证类文件
+- 无上下文的表格、数据导出、名单、通讯录、下载说明、软件 license、README 模板
+- 图片 OCR 后的证件/票据/截图内容，除非它明显是用户整理的知识笔记
+- 内容过短、重复、无明确主题、无法形成个人知识卡片的文件
+
+隐私规则：
+- 只要包含密码、密钥、Token、API Key、cookie、私钥，
+  privacy_level 必须是 "private"，should_ingest 必须 false
+- 包含身份证号、手机号、银行卡号、客户名单、公司机密、
+  个人医疗/财务/法律材料，privacy_level 用 "private" 或 "sensitive"，
+  should_ingest 必须 false
+- 只有 privacy_level 为 "safe" 且确实有知识复用价值时，should_ingest 才能 true
+
+判断标准：
+- 如果不确定，宁可 should_ingest=false
+- 不要因为文件扩展名是 md/pdf/docx/txt 就入库
+- 不要因为内容“可读”就入库；必须是“值得未来检索的知识/记忆”
 
 返回严格 JSON（不要 markdown 代码块）：
 {{
-    "should_ingest": true,
+    "should_ingest": false,
     "reason": "简短说明",
     "privacy_level": "safe",
     "contains_passwords": false,
     "contains_pii": false,
-    "is_knowledge": true
+    "is_knowledge": false
 }}
 """
 
@@ -82,14 +104,14 @@ def classify_file(
         try:
             cfg = config.load_config()
             llm_cfg = cfg.llm
-            if llm_cfg and llm_cfg.get("provider"):
-                engine = llm_engine.load_llm_engine(llm_cfg)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError(f"LLM config is required for Knowledge Radar: {exc}") from exc
+        if not llm_cfg or not llm_cfg.get("provider"):
+            raise RuntimeError("LLM not configured. Knowledge Radar requires a reasoning model.")
+        engine = llm_engine.load_llm_engine(llm_cfg)
 
     if engine is None or not engine.is_available():
-        # Fallback: simple heuristic classification
-        return _heuristic_classify(file_info)
+        raise RuntimeError("LLM provider not available. Knowledge Radar cannot run without AI.")
 
     preview = _read_preview(file_info.path, max_chars=1000)
     prompt = CLASSIFY_PROMPT.format(filepath=file_info.path, preview=preview)
@@ -105,11 +127,12 @@ def classify_file(
             file_info.contains_passwords = result.get("contains_passwords", False)
             file_info.contains_pii = result.get("contains_pii", False)
             file_info.is_knowledge = result.get("is_knowledge", True)
+            if file_info.privacy_level != "safe" or not file_info.is_knowledge:
+                file_info.should_ingest = False
         else:
-            # fallback
-            file_info = _heuristic_classify(file_info)
-    except Exception:
-        file_info = _heuristic_classify(file_info)
+            raise RuntimeError("LLM classification returned invalid JSON")
+    except Exception as exc:
+        raise RuntimeError(f"LLM classification failed for {file_info.path}: {exc}") from exc
 
     return file_info
 
@@ -142,7 +165,7 @@ def _extract_json(text: str) -> dict | None:
 
 
 def _heuristic_classify(file_info: FileInfo) -> FileInfo:
-    """Fallback heuristic classification when LLM is unavailable."""
+    """Strict non-AI prefilter for tests and explicit offline tools only."""
     path_lower = file_info.path.lower()
 
     # Password/secret patterns
@@ -160,9 +183,35 @@ def _heuristic_classify(file_info: FileInfo) -> FileInfo:
             file_info.reason = f"Path contains '{pattern}'"
             return file_info
 
-    # If it looks like a knowledge file
-    file_info.should_ingest = True
+    non_memory_patterns = [
+        "invoice", "receipt", "bill", "statement", "bank", "salary", "payroll",
+        "log", "debug", "trace", "crash", "license", "readme", "changelog",
+        "export", "backup", "cache", "tmp", "temp", "download", "安装", "发票",
+        "账单", "流水", "工资", "身份证", "报销", "日志", "缓存", "备份",
+    ]
+    for pattern in non_memory_patterns:
+        if pattern in path_lower:
+            file_info.should_ingest = False
+            file_info.privacy_level = "safe"
+            file_info.is_knowledge = False
+            file_info.reason = f"Heuristic skip: path contains '{pattern}'"
+            return file_info
+
+    knowledge_patterns = [
+        "note", "notes", "memo", "meeting", "research", "draft", "idea",
+        "project", "plan", "review", "summary", "reading", "agent", "session",
+        "笔记", "会议", "纪要", "研究", "方案", "复盘", "总结", "草稿",
+        "想法", "阅读", "摘录", "项目", "会话",
+    ]
+    if any(pattern in path_lower for pattern in knowledge_patterns):
+        file_info.should_ingest = True
+        file_info.privacy_level = "safe"
+        file_info.is_knowledge = True
+        file_info.reason = "Heuristic: path looks like reusable knowledge"
+        return file_info
+
+    file_info.should_ingest = False
     file_info.privacy_level = "safe"
-    file_info.is_knowledge = True
-    file_info.reason = "Heuristic: likely knowledge file"
+    file_info.is_knowledge = False
+    file_info.reason = "Heuristic skip: not clearly reusable personal knowledge"
     return file_info

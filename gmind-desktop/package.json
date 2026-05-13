@@ -25,12 +25,14 @@
       "dist/**/*",
       "src/electron/**/*",
       "src/assets/icon.png",
+      "src/assets/icon.icns",
       "src/assets/gmind-menubar.svg",
       "src/assets/gmind-menubar.png",
       "package.json"
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "src/assets/icon.icns",
       "target": [
         "dir"
       ],

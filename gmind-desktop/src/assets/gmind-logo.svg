@@ -1,0 +1,15 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">GMind Memory Toast logo</title>
+  <desc id="desc">An original memory toast logo for GMind, combining a warm slice of toast with a simple knowledge circuit.</desc>
+  <rect width="1024" height="1024" rx="248" fill="#10241D"/>
+  <path d="M289 814V453C289 310 388 226 512 226C636 226 735 310 735 453V814C735 845 710 870 679 870H345C314 870 289 845 289 814Z" fill="#F5E4BD"/>
+  <path d="M353 790V457C353 351 421 290 512 290C603 290 671 351 671 457V790C671 799 664 806 655 806H369C360 806 353 799 353 790Z" fill="#FFF4D6"/>
+  <path d="M512 390V634" stroke="#153126" stroke-width="38" stroke-linecap="round"/>
+  <path d="M512 512H635" stroke="#153126" stroke-width="38" stroke-linecap="round"/>
+  <path d="M512 512H397" stroke="#153126" stroke-width="38" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="56" fill="#2E7D5B" stroke="#FFF4D6" stroke-width="22"/>
+  <circle cx="512" cy="390" r="42" fill="#C96B3C" stroke="#FFF4D6" stroke-width="18"/>
+  <circle cx="635" cy="512" r="42" fill="#2D6CDF" stroke="#FFF4D6" stroke-width="18"/>
+  <circle cx="397" cy="512" r="38" fill="#7C9A6A" stroke="#FFF4D6" stroke-width="18"/>
+  <circle cx="512" cy="634" r="38" fill="#153126" stroke="#FFF4D6" stroke-width="18"/>
+</svg>

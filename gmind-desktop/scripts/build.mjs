@@ -7,8 +7,12 @@ const dist = join(root, "dist");
 
 await mkdir(dist, { recursive: true });
 await cp(join(root, "index.html"), join(dist, "index.html"));
+await cp(join(root, "src", "i18n.js"), join(dist, "i18n.js"));
 await cp(join(root, "src", "main.js"), join(dist, "main.js"));
 await cp(join(root, "src", "styles.css"), join(dist, "styles.css"));
 await cp(join(root, "src", "assets", "icon.png"), join(dist, "icon.png"));
+await cp(join(root, "src", "assets", "gmind-logo.png"), join(dist, "gmind-logo.png"));
+await cp(join(root, "src", "assets", "gmind-logo.svg"), join(dist, "gmind-logo.svg"));
+await cp(join(root, "src", "assets", "gmind-mark.svg"), join(dist, "gmind-mark.svg"));
 await cp(join(root, "src", "assets", "gmind-menubar.svg"), join(dist, "gmind-menubar.svg"));
 await cp(join(root, "src", "assets", "gmind-menubar.png"), join(dist, "gmind-menubar.png"));

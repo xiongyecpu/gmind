@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 
@@ -24,6 +25,18 @@ from gmind.taotie import (
     WatcherConfig,
     scan_computer,
 )
+
+RADAR_SCAN_STATE = {
+    "running": False,
+    "cancel_requested": False,
+    "total_files": 0,
+    "processed_files": 0,
+    "model_total": 0,
+    "model_done": 0,
+    "started_at": None,
+    "finished_at": None,
+    "message": "",
+}
 
 
 def _app_version() -> str:
@@ -334,15 +347,38 @@ async def stats_endpoint(request: Request) -> JSONResponse:
 
 # ─── Taotie endpoints ─────────────────────────────────────────────
 
-async def taotie_scan_endpoint(request: Request) -> JSONResponse:
-    """GET /taotie/scan — scan the computer for knowledge files."""
+def _scan_with_progress() -> dict:
+    RADAR_SCAN_STATE.update({
+        "running": True,
+        "cancel_requested": False,
+        "total_files": 0,
+        "processed_files": 0,
+        "model_total": 0,
+        "model_done": 0,
+        "started_at": time.time(),
+        "finished_at": None,
+        "message": "Scanning files",
+    })
+
+    files, folders = scan_computer()
+    RADAR_SCAN_STATE.update({
+        "total_files": len(files),
+        "model_total": len(files),
+        "message": "Classifying files with reasoning model",
+    })
+
+    from gmind.taotie.classifier import classify_file
+
+    classified = []
+    cancelled = False
     try:
-        files, folders = scan_computer()
-        # Quick heuristic classification (no LLM in scan endpoint for speed)
-        from gmind.taotie.classifier import _heuristic_classify
-        classified = []
-        for f in files:
-            cf = _heuristic_classify(f)
+        for file in files:
+            if RADAR_SCAN_STATE["cancel_requested"]:
+                cancelled = True
+                RADAR_SCAN_STATE["message"] = "Cancelled"
+                break
+
+            cf = classify_file(file)
             classified.append({
                 "path": cf.path,
                 "size": cf.size,
@@ -354,28 +390,69 @@ async def taotie_scan_endpoint(request: Request) -> JSONResponse:
                 "contains_pii": cf.contains_pii,
                 "is_knowledge": cf.is_knowledge,
             })
-
-        return JSONResponse({
-            "status": "ok",
-            "files": classified,
-            "folders": [
-                {
-                    "path": f.path,
-                    "file_count": f.file_count,
-                    "knowledge_file_count": f.knowledge_file_count,
-                    "total_size": f.total_size,
-                    "is_agent_session": f.is_agent_session,
-                    "is_wechat": f.is_wechat,
-                    "checked": f.checked,
-                }
-                for f in folders
-            ],
-            "total_files": len(classified),
+            RADAR_SCAN_STATE["processed_files"] = len(classified)
+            RADAR_SCAN_STATE["model_done"] = len(classified)
+    finally:
+        RADAR_SCAN_STATE.update({
+            "running": False,
+            "finished_at": time.time(),
+            "message": "Cancelled" if cancelled else "Finished",
         })
+
+    return {
+        "status": "ok",
+        "files": classified,
+        "folders": [
+            {
+                "path": f.path,
+                "file_count": f.file_count,
+                "knowledge_file_count": f.knowledge_file_count,
+                "total_size": f.total_size,
+                "is_agent_session": f.is_agent_session,
+                "is_wechat": f.is_wechat,
+                "checked": f.checked,
+            }
+            for f in folders
+        ],
+        "total_files": len(files),
+        "processed_files": len(classified),
+        "model_total": len(files),
+        "model_done": len(classified),
+        "cancelled": cancelled,
+    }
+
+
+async def taotie_scan_endpoint(request: Request) -> JSONResponse:
+    """GET /taotie/scan — scan the computer for knowledge files."""
+    if RADAR_SCAN_STATE["running"]:
+        return JSONResponse(
+            {"status": "error", "message": "Knowledge Radar is already running"},
+            status_code=409,
+        )
+
+    try:
+        return JSONResponse(await run_in_threadpool(_scan_with_progress))
     except Exception as exc:
+        RADAR_SCAN_STATE.update({
+            "running": False,
+            "finished_at": time.time(),
+            "message": str(exc),
+        })
         return JSONResponse(
             {"status": "error", "message": str(exc)}, status_code=500
         )
+
+
+async def taotie_scan_status_endpoint(request: Request) -> JSONResponse:
+    """GET /taotie/scan/status — current scan progress."""
+    return JSONResponse({"status": "ok", **RADAR_SCAN_STATE})
+
+
+async def taotie_scan_cancel_endpoint(request: Request) -> JSONResponse:
+    """POST /taotie/scan/cancel — request cancellation for the active scan."""
+    RADAR_SCAN_STATE["cancel_requested"] = True
+    RADAR_SCAN_STATE["message"] = "Cancelling"
+    return JSONResponse({"status": "ok", **RADAR_SCAN_STATE})
 
 
 async def taotie_queue_endpoint(request: Request) -> JSONResponse:
@@ -611,6 +688,8 @@ routes = [
     Route("/stats", stats_endpoint, methods=["GET"]),
     # Taotie
     Route("/taotie/scan", taotie_scan_endpoint, methods=["GET"]),
+    Route("/taotie/scan/status", taotie_scan_status_endpoint, methods=["GET"]),
+    Route("/taotie/scan/cancel", taotie_scan_cancel_endpoint, methods=["POST"]),
     Route("/taotie/queue", taotie_queue_endpoint, methods=["GET"]),
     Route("/taotie/queue/start", taotie_queue_start_endpoint, methods=["POST"]),
     Route("/taotie/queue/pause", taotie_queue_pause_endpoint, methods=["POST"]),
