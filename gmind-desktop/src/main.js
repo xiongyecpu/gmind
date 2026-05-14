@@ -172,21 +172,19 @@ function renderRecentPage() {
 }
 
 async function saveNote() {
-  const content = $("quick-content").value.trim();
+  const content = $("note-input").value.trim();
   if (!content) return;
-  $("quick-message").textContent = t("home.note.saving");
   try {
     const result = await api("/add", {
       method: "POST",
       body: JSON.stringify({ content, title: "", source: "gmind-desktop", type: "note" }),
     });
-    $("quick-content").value = "";
-    $("quick-message").textContent = t("home.note.helper");
+    $("note-input").value = "";
     showToast(t("home.note.saved"));
     await loadHome();
     if (result?.slug) $("status-line").textContent = `刚刚保存：${result.slug}`;
   } catch (error) {
-    $("quick-message").textContent = humanError(error);
+    showToast(humanError(error));
   }
 }
 
@@ -789,7 +787,7 @@ document.addEventListener("click", (event) => {
 });
 
 $("save-note").addEventListener("click", saveNote);
-$("quick-content").addEventListener("keydown", (event) => {
+$("note-input").addEventListener("keydown", (event) => {
   if (event.metaKey && event.key === "Enter") saveNote();
 });
 $("ask-button").addEventListener("click", askFromHome);

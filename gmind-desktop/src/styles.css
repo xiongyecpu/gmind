@@ -89,6 +89,12 @@ p {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.inner::-webkit-scrollbar {
+  display: none;
 }
 
 .inner > *,
@@ -376,7 +382,8 @@ textarea {
   padding: 8px 10px 10px;
 }
 
-.ask-row {
+.ask-row,
+.note-row {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
@@ -389,7 +396,13 @@ textarea {
   background: var(--gm-blue);
 }
 
-.ask-row input {
+.note-row button {
+  color: white;
+  background: var(--gm-copper);
+}
+
+.ask-row input,
+.note-row input {
   min-height: 32px;
   border: 1px solid var(--gm-line);
   border-radius: 8px;
@@ -407,24 +420,80 @@ textarea {
 
 .radar-home {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 10px;
 }
 
-.radar-home-main {
+.radar-compact {
   display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
-.radar-home-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
+.radar-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
 
-.radar-home-actions button {
-  min-height: 34px;
+.radar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--gm-ink);
+  background: color-mix(in srgb, var(--gm-ink) 6%, transparent);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.radar-pill.primary {
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+#radar-switch-state.on {
+  color: var(--gm-green);
+  background: var(--gm-green-soft);
+}
+
+.radar-file-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--gm-green) 18%, var(--gm-line));
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--gm-green-soft);
+}
+
+.radar-file-compact[hidden] {
+  display: none;
+}
+
+.radar-file-compact span {
+  flex: 0 0 auto;
+  color: var(--gm-muted);
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.radar-file-compact strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gm-ink);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .radar-copy {

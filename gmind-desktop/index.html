@@ -41,13 +41,10 @@
           <section class="section note-section" aria-label="记一条">
             <div class="section-head">
               <div class="section-title"><span class="signal"></span><span data-i18n="home.note.title">记一条</span></div>
-              <span class="hint">⌘ Enter</span>
+              <span class="hint" data-i18n="home.note.helper">会自动整理标签和关联</span>
             </div>
-            <div class="note-box">
-              <textarea id="quick-content" placeholder="写下一个想法、摘录或链接..." data-i18n-placeholder="home.note.placeholder"></textarea>
-            </div>
-            <div class="action-row">
-              <span id="quick-message" class="hint" data-i18n="home.note.helper">会自动整理标签和关联</span>
+            <div class="note-row">
+              <input id="note-input" placeholder="写下一个想法、摘录或链接..." data-i18n-placeholder="home.note.placeholder" />
               <button id="save-note" data-i18n="home.note.title">记一条</button>
             </div>
           </section>
@@ -69,24 +66,16 @@
               <span class="hint" data-i18n="home.radar.helper">自动判断、知识化</span>
             </div>
             <div class="radar-home">
-              <div class="radar-home-main">
-                <div class="radar-state-stack" aria-label="雷达运行状态">
-                  <div class="radar-state-row">
-                    <span data-i18n="radar.status.radar">雷达状态</span>
-                    <strong id="radar-switch-state" data-i18n="radar.status.off">关闭</strong>
-                  </div>
-                  <div class="radar-state-row primary">
-                    <span data-i18n="radar.status.process">知识处理状态</span>
-                    <strong id="radar-process-state" data-i18n="radar.process.idle">空闲</strong>
-                  </div>
+              <div class="radar-compact">
+                <div class="radar-pills">
+                  <span id="radar-switch-state" class="radar-pill" data-i18n="radar.status.off">关闭</span>
+                  <span id="radar-process-state" class="radar-pill primary" data-i18n="radar.process.idle">空闲</span>
                 </div>
+                <button id="scan-button" data-i18n="radar.scan">启动雷达</button>
               </div>
-              <div id="radar-file-card" class="radar-file-card" hidden>
+              <div id="radar-file-card" class="radar-file-compact" hidden>
                 <span data-i18n="radar.file.current">当前文件</span>
                 <strong id="radar-current-file"></strong>
-              </div>
-              <div class="radar-home-actions">
-                <button id="scan-button" data-i18n="radar.scan">启动雷达</button>
               </div>
             </div>
           </section>
