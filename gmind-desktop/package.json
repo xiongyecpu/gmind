@@ -7,9 +7,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev:web": "node scripts/dev-server.mjs",
-    "electron": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder --mac dir",
-    "electron:pack": "npm run build && electron-builder --mac zip"
+    "electron": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
+    "electron:build": "npm run build && env -u ELECTRON_RUN_AS_NODE electron-builder --mac dir",
+    "electron:pack": "npm run build && env -u ELECTRON_RUN_AS_NODE electron-builder --mac zip"
   },
   "devDependencies": {
     "electron": "^40.10.0",
