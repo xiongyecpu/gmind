@@ -36,6 +36,8 @@ RADAR_SCAN_STATE = {
     "started_at": None,
     "finished_at": None,
     "message": "",
+    "current_file": "",
+    "current_action": "",
 }
 
 
@@ -358,13 +360,17 @@ def _scan_with_progress() -> dict:
         "started_at": time.time(),
         "finished_at": None,
         "message": "Scanning files",
+        "current_file": "",
+        "current_action": "discovering",
     })
 
-    files, folders = scan_computer()
+    watched_folders = [folder.path for folder in WatcherConfig().get_enabled()]
+    files, folders = scan_computer(scan_dirs=watched_folders or None)
     RADAR_SCAN_STATE.update({
         "total_files": len(files),
         "model_total": len(files),
         "message": "Classifying files with reasoning model",
+        "current_action": "classifying",
     })
 
     from gmind.taotie.classifier import classify_file
@@ -376,8 +382,10 @@ def _scan_with_progress() -> dict:
             if RADAR_SCAN_STATE["cancel_requested"]:
                 cancelled = True
                 RADAR_SCAN_STATE["message"] = "Cancelled"
+                RADAR_SCAN_STATE["current_action"] = "cancelled"
                 break
 
+            RADAR_SCAN_STATE["current_file"] = file.path
             cf = classify_file(file)
             classified.append({
                 "path": cf.path,
@@ -397,6 +405,8 @@ def _scan_with_progress() -> dict:
             "running": False,
             "finished_at": time.time(),
             "message": "Cancelled" if cancelled else "Finished",
+            "current_file": "",
+            "current_action": "cancelled" if cancelled else "done",
         })
 
     return {
@@ -437,6 +447,8 @@ async def taotie_scan_endpoint(request: Request) -> JSONResponse:
             "running": False,
             "finished_at": time.time(),
             "message": str(exc),
+            "current_file": "",
+            "current_action": "error",
         })
         return JSONResponse(
             {"status": "error", "message": str(exc)}, status_code=500

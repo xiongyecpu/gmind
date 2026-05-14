@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -47,7 +46,16 @@ AGENT_DIRS = [
 ]
 
 # WeChat messages (macOS)
-WECHAT_BASE = Path.home() / "Library" / "Containers" / "com.tencent.xinWeChat" / "Data" / "Library" / "Application Support" / "com.tencent.xinWeChat"
+WECHAT_BASE = (
+    Path.home()
+    / "Library"
+    / "Containers"
+    / "com.tencent.xinWeChat"
+    / "Data"
+    / "Library"
+    / "Application Support"
+    / "com.tencent.xinWeChat"
+)
 
 
 def _should_skip_dir(name: str) -> bool:
@@ -98,7 +106,14 @@ def scan_directory(
             continue
         try:
             if entry.is_dir() and recursive and max_depth > 0:
-                results.extend(scan_directory(entry, recursive=recursive, max_depth=max_depth - 1, min_size=min_size))
+                results.extend(
+                    scan_directory(
+                        entry,
+                        recursive=recursive,
+                        max_depth=max_depth - 1,
+                        min_size=min_size,
+                    )
+                )
             elif entry.is_file() and _is_supported(entry) and _is_knowledge_text(entry):
                 stat = entry.stat()
                 if stat.st_size >= min_size:
@@ -116,6 +131,7 @@ def scan_directory(
 
 def scan_computer(
     *,
+    scan_dirs: list[str] | None = None,
     extra_dirs: list[str] | None = None,
     skip_patterns: list[str] | None = None,
 ) -> tuple[list[FileInfo], list[FolderRecommendation]]:
@@ -125,18 +141,22 @@ def scan_computer(
     """
     home = Path.home()
 
-    # Base directories to scan
-    base_dirs = [
-        home / "Documents",
-        home / "Desktop",
-        home / "Downloads",
-    ]
+    if scan_dirs:
+        base_dirs = [Path(d).expanduser() for d in scan_dirs]
+    else:
+        # Base directories to scan
+        base_dirs = [
+            home / "Documents",
+            home / "Desktop",
+            home / "Downloads",
+        ]
 
-    # Add agent session dirs if they exist
-    for d in AGENT_DIRS:
-        p = Path(d).expanduser()
-        if p.exists():
-            base_dirs.append(p)
+    if not scan_dirs:
+        # Add agent session dirs if they exist
+        for d in AGENT_DIRS:
+            p = Path(d).expanduser()
+            if p.exists():
+                base_dirs.append(p)
 
     # Add extra dirs
     if extra_dirs:
@@ -145,8 +165,7 @@ def scan_computer(
             if p.exists():
                 base_dirs.append(p)
 
-    # Add WeChat if exists
-    if WECHAT_BASE.exists():
+    if not scan_dirs and WECHAT_BASE.exists():
         for sub in WECHAT_BASE.iterdir():
             msg_dir = sub / "Message"
             if msg_dir.exists():
@@ -203,7 +222,9 @@ def _build_recommendations(
             continue
 
         path_str = str(folder)
-        is_agent = any(a in path_str for a in [".hermes", ".openclaw", ".claude", ".kimi", ".codex"])
+        is_agent = any(
+            a in path_str for a in [".hermes", ".openclaw", ".claude", ".kimi", ".codex"]
+        )
         is_wechat = "com.tencent.xinWeChat" in path_str
 
         recs.append(FolderRecommendation(

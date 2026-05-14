@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
-from gmind import add, config, db, ingest, utils
+from gmind import add, config, db, enrich, ingest, utils
+from gmind.llm import engine as llm_engine
 from gmind.taotie.history import IngestHistory
 from gmind.utils import notify_macos
 
@@ -24,6 +26,7 @@ class IngestTask:
     selected: bool = True
     status: str = "pending"
     progress: float = 0.0
+    phase: str = ""
     slug: str = ""
     error: str = ""
 
@@ -35,6 +38,7 @@ class IngestTask:
             "selected": self.selected,
             "status": self.status,
             "progress": self.progress,
+            "phase": self.phase,
             "slug": self.slug,
             "error": self.error,
         }
@@ -185,7 +189,8 @@ class IngestQueue:
                     if t.path == task.path:
                         self.current_index = i
                         t.status = "ingesting"
-                        t.progress = 0.0
+                        t.progress = 0.05
+                        t.phase = "reading"
                         break
                 self._save()
             self._notify()
@@ -197,6 +202,7 @@ class IngestQueue:
                         if t.path == task.path:
                             t.status = "done"
                             t.progress = 1.0
+                            t.phase = "done"
                             t.slug = slug
                             break
                     self._save()
@@ -206,6 +212,7 @@ class IngestQueue:
                     for t in self.tasks:
                         if t.path == task.path:
                             t.status = "error"
+                            t.phase = "error"
                             t.error = str(exc)
                             break
                     self._save()
@@ -222,12 +229,13 @@ class IngestQueue:
         notify_macos("GMind", "饕餮盛宴入库完成")
 
     def _ingest_one(self, path: str, cfg: config.Config) -> str:
-        from pathlib import Path as P
-        file_path = P(path)
+        file_path = Path(path)
+        self._set_task_progress(path, 0.18, "reading")
         content = ingest._extract_text(file_path)
         if not content or not content.strip():
             raise ValueError("Empty content")
 
+        self._set_task_progress(path, 0.35, "saving")
         title = ingest._extract_title_heuristic(content, file_path.stem)
         full_content = f"# {title}\n\n{content}"
         page_type = ingest._infer_type(title, content)
@@ -243,6 +251,7 @@ class IngestQueue:
             if row:
                 return row[0]
 
+        self._set_task_progress(path, 0.58, "saving")
         add.add_page(
             full_content,
             page_type=page_type,
@@ -250,15 +259,36 @@ class IngestQueue:
             slug=slug,
             source=f"taotie:{path}",
             on_duplicate="a",
+            auto_extract=False,
         )
+        self._set_task_progress(path, 0.76, "graphing")
+        self._enrich_page(slug, cfg)
+        self._set_task_progress(path, 0.92, "linking")
         return slug
+
+    def _enrich_page(self, slug: str, cfg: config.Config) -> None:
+        llm_cfg = cfg.llm
+        if not llm_cfg or not llm_cfg.get("provider"):
+            return
+        engine = llm_engine.load_llm_engine(llm_cfg)
+        if engine is None or not engine.is_available():
+            return
+        enrich.enrich_page(slug, engine=engine, cfg=cfg)
+
+    def _set_task_progress(self, path: str, progress: float, phase: str) -> None:
+        with self._task_lock:
+            for task in self.tasks:
+                if task.path == path:
+                    task.progress = progress
+                    task.phase = phase
+                    break
+            self._save()
+        self._notify()
 
     def register_callback(self, callback: Callable) -> None:
         self._callbacks.append(callback)
 
     def _notify(self) -> None:
         for cb in self._callbacks:
-            try:
+            with suppress(Exception):
                 cb()
-            except Exception:
-                pass

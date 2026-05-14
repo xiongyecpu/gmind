@@ -8,7 +8,7 @@
 
 GMind 是一个面向知识工作者的开源个人知识库工具，基于 PostgreSQL + pgvector 构建，通过向量搜索、轻量知识图谱和可选 LLM 增强，将碎片化的笔记、阅读材料与思考串联成可查询、可探索、可问答的知识网络。
 
-**当前状态（以代码实现为准）**：v4 / P10 功能线正在落地，包含 CLI、HTTP API、Chrome Extension、Electron 桌面托盘/菜单栏应用、内置 LLM 引擎，以及知识雷达（Taotie）扫描与入库队列。需要注意：LLM 功能是可选增强；CLI `gmind add` 需要显式 `--auto-extract` 才会自动提取；Taotie watcher 当前是监听文件夹配置与 API/UI 管理，不是独立常驻 FSEvents 后台进程；`.docx` 当前可被扫描和预览分类，但批量入库正文提取尚未接入 `ingest.py`。
+**当前状态（以代码实现为准）**：v4 / P10 功能线正在落地，包含 CLI、HTTP API、Chrome Extension、Electron 桌面托盘/菜单栏应用、内置 LLM 引擎，以及知识雷达（Taotie）扫描与入库队列。需要注意：LLM 功能是可选增强；CLI `gmind add` 需要显式 `--auto-extract` 才会自动提取；Taotie watcher 当前是监听文件夹配置与 API/UI 管理，桌面雷达扫描会优先使用已配置的监听文件夹，但它不是独立常驻 FSEvents 后台进程；`.docx` 当前可被扫描和预览分类，但批量入库正文提取尚未接入 `ingest.py`。
 
 **文档权威性**：`README.md`、本文件和 `docs/GMind-Desktop-App设计文档.md` 描述当前实现；`docs/GMind-知识雷达设计文档.md` 描述 Taotie/知识雷达当前设计边界。
 

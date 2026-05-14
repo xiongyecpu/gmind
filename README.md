@@ -356,7 +356,7 @@ Implementation notes:
 - CLI `gmind add` only runs LLM extraction when `--auto-extract` is passed.
 - HTTP `/add` currently uses the lower-level add flow and may auto-enrich when LLM is configured.
 - Taotie can scan `.docx` files and classify previews, but `gmind ingest` currently imports `.md`, `.txt`, and `.pdf` only.
-- Watcher support currently stores folder configuration; a standalone background watcher daemon is not part of the current implementation.
+- Watcher support currently stores folder configuration and the desktop radar scan uses those folders when configured; a standalone background watcher daemon is not part of the current implementation.
 - Electron is the desktop mainline.
 
 ## LLM Integration (v3)

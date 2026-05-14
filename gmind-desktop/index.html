@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GMind</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body>
     <aside class="popover" aria-label="GMind">
@@ -12,7 +12,7 @@
         <div class="inner">
           <header class="top">
             <div class="brand">
-              <img src="icon.png" alt="GMind" />
+              <img src="src/assets/icon.png" alt="GMind" />
               <div>
                 <h1>GMind</h1>
                 <p id="slogan-line" class="slogan" data-i18n="app.slogan">把零散想法，连成可用知识</p>
@@ -38,7 +38,7 @@
             </div>
           </section>
 
-          <section class="section" aria-label="记一条">
+          <section class="section note-section" aria-label="记一条">
             <div class="section-head">
               <div class="section-title"><span class="signal"></span><span data-i18n="home.note.title">记一条</span></div>
               <span class="hint">⌘ Enter</span>
@@ -52,7 +52,7 @@
             </div>
           </section>
 
-          <section class="section" aria-label="问一下">
+          <section class="section ask-section" aria-label="问一下">
             <div class="section-head">
               <div class="section-title"><span class="signal ask"></span><span data-i18n="home.ask.title">问一下</span></div>
               <span class="hint" data-i18n="home.ask.helper">从你的知识里找答案</span>
@@ -63,24 +63,38 @@
             </div>
           </section>
 
-          <section class="section" aria-label="知识雷达">
+          <section class="section radar-section" aria-label="知识雷达">
             <div class="section-head">
               <div class="section-title"><span class="signal radar"></span><span data-i18n="home.radar.title">知识雷达</span></div>
-              <span class="hint" data-i18n="home.radar.helper">隐私内容默认跳过</span>
+              <span class="hint" data-i18n="home.radar.helper">自动判断、知识化</span>
             </div>
-            <div class="radar-row">
-              <div class="radar-copy">
-                <strong id="radar-summary" data-i18n="home.radar.summary">点击查看可入库内容</strong>
-                <span id="radar-subtitle" class="hint">Documents、Desktop、Downloads</span>
+            <div class="radar-home">
+              <div class="radar-home-main">
+                <div class="radar-state-stack" aria-label="雷达运行状态">
+                  <div class="radar-state-row">
+                    <span data-i18n="radar.status.radar">雷达状态</span>
+                    <strong id="radar-switch-state" data-i18n="radar.status.off">关闭</strong>
+                  </div>
+                  <div class="radar-state-row primary">
+                    <span data-i18n="radar.status.process">知识处理状态</span>
+                    <strong id="radar-process-state" data-i18n="radar.process.idle">空闲</strong>
+                  </div>
+                </div>
               </div>
-              <button class="secondary" data-go="radar" data-i18n="home.radar.view">查看</button>
+              <div id="radar-file-card" class="radar-file-card" hidden>
+                <span data-i18n="radar.file.current">当前文件</span>
+                <strong id="radar-current-file"></strong>
+              </div>
+              <div class="radar-home-actions">
+                <button id="scan-button" data-i18n="radar.scan">启动雷达</button>
+              </div>
             </div>
           </section>
 
           <section class="recent" aria-label="最近记下">
             <div class="recent-title">
               <span data-i18n="home.recent.title">最近记下</span>
-              <button class="ghost" data-go="recent" data-i18n="home.recent.all">全部</button>
+              <button class="ghost" data-go="gmind-logs" data-i18n="logs.view">查看日志</button>
             </div>
             <div id="recent-list" class="recent-list"></div>
           </section>
@@ -113,76 +127,17 @@
         </div>
       </section>
 
-      <section class="view" data-view="radar">
+      <section class="view" data-view="gmind-logs">
         <header class="subhead">
           <button class="back" data-go="home" aria-label="返回">‹</button>
           <div>
-            <h2 data-i18n="home.radar.title">知识雷达</h2>
-            <p data-i18n="radar.subtitle">AI 自动发现、判断、知识化</p>
+            <h2 data-i18n="logs.title">GMind 日志</h2>
+            <p data-i18n="logs.subtitle">最近记录、雷达入库和系统活动</p>
           </div>
-          <button id="scan-button" data-i18n="radar.scan">启动雷达</button>
+          <button id="refresh-gmind-logs" class="ghost" data-i18n="nav.refresh">刷新</button>
         </header>
-        <div class="inner radar-inner">
-          <section class="radar-status" aria-label="知识雷达状态">
-            <div>
-              <div class="radar-status-title"><span class="pulse"></span><span data-i18n="radar.autopilot">自动巡航</span></div>
-              <p id="radar-status-copy" data-i18n="radar.autopilot.copy">发现新知识后会自动判断隐私并知识化入库</p>
-            </div>
-            <span id="radar-last-run" class="hint" data-i18n="radar.lastRun.never">尚未运行</span>
-          </section>
-
-          <section class="progress-stack" aria-label="知识雷达进度">
-            <div class="progress-line">
-              <div class="progress-top">
-                <span data-i18n="radar.progress.scan">扫描文件</span>
-                <strong id="radar-scan-progress-label">0/0</strong>
-              </div>
-              <div class="progress-track"><span id="radar-scan-bar" class="progress-fill"></span></div>
-            </div>
-            <div class="progress-line">
-              <div class="progress-top">
-                <span data-i18n="radar.progress.model">模型推理</span>
-                <strong id="radar-model-progress-label">0/0</strong>
-              </div>
-              <div class="progress-track"><span id="radar-model-bar" class="progress-fill model"></span></div>
-            </div>
-          </section>
-
-          <section class="radar-metrics" aria-label="知识雷达指标">
-            <button class="radar-metric success active" type="button" data-radar-detail="ingested">
-              <span data-i18n="radar.metric.ingested">已知识化</span>
-              <strong id="radar-ingested-count">0</strong>
-            </button>
-            <button class="radar-metric muted" type="button" data-radar-detail="invalid">
-              <span data-i18n="radar.metric.invalid">无效文件</span>
-              <strong id="radar-invalid-count">0</strong>
-            </button>
-            <button class="radar-metric risk" type="button" data-radar-detail="privacy">
-              <span data-i18n="radar.metric.privacy">隐私文件</span>
-              <strong id="radar-risk-count">0</strong>
-            </button>
-            <button class="radar-metric source" type="button" data-radar-detail="sources">
-              <span data-i18n="radar.metric.sources">知识源</span>
-              <strong id="radar-source-count">0</strong>
-            </button>
-          </section>
-
-          <section class="radar-block radar-detail-panel">
-            <div class="recent-title">
-              <span id="radar-detail-title" data-i18n="radar.detail.ingested">已知识化详情</span>
-              <span id="radar-queue-state">Idle</span>
-            </div>
-            <div id="scan-list" class="radar-feed empty" data-i18n="radar.scan.empty">启动雷达后，AI 会自动整理结果</div>
-          </section>
-
-          <section class="queue-strip">
-            <div>
-              <strong data-i18n="radar.queue.title">入库队列</strong>
-              <span id="queue-summary">等待雷达启动</span>
-            </div>
-            <button id="queue-pause" class="ghost" data-i18n="radar.queue.pause">暂停</button>
-          </section>
-          <section id="queue-list" class="source-list" hidden></section>
+        <div class="inner">
+          <section id="gmind-log-list" class="source-list"></section>
         </div>
       </section>
 
@@ -252,12 +207,32 @@
                 <option value="en">English</option>
               </select>
             </article>
-            <article class="setting-row">
+            <article class="setting-row stacked">
               <div>
                 <strong data-i18n="home.radar.title">知识雷达</strong>
-                <span data-i18n="settings.radar.desc">扫描 Documents、Desktop、Downloads</span>
+                <span data-i18n="settings.radar.desc">扫描文件夹和时间间隔</span>
               </div>
-              <button class="secondary" data-go="radar" data-i18n="settings.scope">范围</button>
+              <section class="config-form compact">
+                <label class="field">
+                  <span data-i18n="radar.manage.interval">扫描间隔</span>
+                  <select id="radar-interval">
+                    <option value="1" data-i18n="radar.interval.1">每 1 小时</option>
+                    <option value="3" data-i18n="radar.interval.3">每 3 小时</option>
+                    <option value="6" data-i18n="radar.interval.6">每 6 小时</option>
+                    <option value="12" data-i18n="radar.interval.12">每 12 小时</option>
+                    <option value="24" data-i18n="radar.interval.24">每天</option>
+                  </select>
+                </label>
+                <div class="field">
+                  <span data-i18n="radar.manage.folder">扫描文件夹</span>
+                  <div class="inline-form">
+                    <input id="radar-folder-input" placeholder="~/Documents" data-i18n-placeholder="radar.manage.folder.placeholder" />
+                    <button id="add-radar-folder" type="button" data-i18n="radar.manage.add">添加</button>
+                  </div>
+                </div>
+                <button id="save-radar-settings" data-i18n="radar.manage.save">保存</button>
+              </section>
+              <section id="radar-folder-list" class="source-list"></section>
             </article>
             <article class="setting-row">
               <div>
@@ -381,7 +356,7 @@
     </aside>
 
     <div id="toast" class="toast" hidden><span class="health-dot"></span><span id="toast-text">已加入知识库</span></div>
-    <script src="i18n.js"></script>
-    <script src="main.js"></script>
+    <script src="src/i18n.js"></script>
+    <script src="src/main.js"></script>
   </body>
 </html>

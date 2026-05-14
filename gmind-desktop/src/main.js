@@ -4,19 +4,23 @@ const listen = desktop?.listen;
 const API = "http://127.0.0.1:8765";
 const i18n = window.GMindI18n;
 const t = (key, vars) => i18n?.t(key, vars) ?? key;
+const RADAR_ENABLED_KEY = "gmind.radar.enabled";
 
 const state = {
   view: "home",
   recent: [],
   scanFiles: [],
   radarFolders: [],
+  radarManageFolders: [],
   modelConfig: null,
   lastAnswer: "",
   radarLastRun: "",
+  radarEnabled: localStorage.getItem(RADAR_ENABLED_KEY) === "true",
   radarRunning: false,
   radarPaused: false,
+  radarAutostarted: false,
+  radarRunResult: "",
   radarStatusPoll: null,
-  radarDetail: "ingested",
   radarStatus: {
     total_files: 0,
     processed_files: 0,
@@ -52,14 +56,20 @@ async function api(path, options = {}) {
 }
 
 function showView(view) {
+  if (view === "radar") view = "home";
+  if (view === "radar-manage") view = "settings";
+  if (view === "radar-logs") view = "gmind-logs";
   state.view = view;
   $$(".view").forEach((node) => node.classList.toggle("active", node.dataset.view === view));
   window.location.hash = view;
 
   if (view === "home") loadHome();
-  if (view === "radar") loadRadarDashboard();
+  if (view === "gmind-logs") loadGmindLogs();
   if (view === "recent") renderRecentPage();
-  if (view === "settings") loadModelConfig();
+  if (view === "settings") {
+    loadModelConfig();
+    loadRadarManager();
+  }
   if (view === "embedding-config") loadModelConfig();
   if (view === "reasoning-config") loadModelConfig();
   if (view === "diagnostics") loadDiagnostics();
@@ -119,10 +129,11 @@ async function loadHome() {
     renderRecentPreview();
     renderRecentPage();
   }
+  await loadRadarDashboard();
 }
 
 function renderRecentPreview() {
-  const items = state.recent.slice(0, 3);
+  const items = state.recent.slice(0, 1);
   const host = $("recent-list");
   if (!items.length) {
     const title = i18n?.locale() === "en" ? "No recent notes" : "暂无最近内容";
@@ -245,15 +256,18 @@ function renderSources(sources) {
 }
 
 async function startScan() {
+  state.radarEnabled = true;
   state.radarRunning = true;
   state.radarPaused = false;
+  state.radarRunResult = "";
+  persistRadarEnabled();
   state.radarStatus = { total_files: 0, processed_files: 0, model_total: 0, model_done: 0 };
   setRadarButtonState();
+  setRadarLive("discovering");
+  setRadarCurrentFile("");
+  updateIngestProgress({});
   updateRadarProgress(state.radarStatus);
   startRadarPolling();
-  $("scan-list").className = "radar-feed empty";
-  $("scan-list").textContent = i18n?.locale() === "en" ? "Radar is reading local knowledge..." : "雷达正在读取本机知识...";
-  $("radar-status-copy").textContent = i18n?.locale() === "en" ? "Scanning, judging privacy, and preparing automatic ingest." : "正在扫描、判断隐私，并准备自动知识化入库。";
   try {
     const response = await api("/taotie/scan");
     state.scanFiles = (response.files ?? []).map((file) => ({ ...file, selected: file.should_ingest !== false }));
@@ -262,62 +276,118 @@ async function startScan() {
     state.radarLastRun = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     renderScan();
     if (state.radarPaused) return;
-    await autoIngestSafeFiles();
+    const ingestCount = await autoIngestSafeFiles();
     if (state.radarPaused) return;
-    await autoWatchRecommendedFolders();
-    await loadQueue();
-    $("radar-status-copy").textContent = i18n?.locale() === "en" ? "Radar finished. Review what AI handled below." : "雷达已完成，本次 AI 处理结果见下方。";
+    state.radarRunResult = ingestCount ? "queued" : "empty";
+    if (ingestCount) {
+      setRadarLive("queued");
+      setRadarCurrentFile("");
+    } else {
+      setRadarLive("empty");
+      setRadarCurrentFile("");
+    }
   } catch (error) {
     const message = humanError(error);
     const needsModel = /llm|reasoning|model|provider/i.test(message);
-    $("scan-list").textContent = needsModel
-      ? (i18n?.locale() === "en"
-        ? "Knowledge Radar requires a working reasoning model."
-        : "知识雷达需要可用的推理模型。")
-      : (i18n?.locale() === "en" ? `Scan failed: ${message}` : `扫描失败：${message}`);
-    $("radar-status-copy").textContent = needsModel
-      ? (i18n?.locale() === "en"
-        ? "Configure and test the reasoning model before running radar."
-        : "请先在设置里配置并测试推理模型。")
-      : message;
+    setRadarLive("error", needsModel
+      ? (i18n?.locale() === "en" ? "Configure and test the reasoning model first." : "请先配置并测试可用的推理模型。")
+      : message);
   } finally {
-    stopRadarPolling();
-    if (!state.radarPaused) state.radarRunning = false;
+    state.radarRunning = false;
     setRadarButtonState();
   }
 }
 
 async function stopRadar() {
+  state.radarEnabled = false;
   state.radarPaused = true;
   state.radarRunning = false;
+  persistRadarEnabled();
   stopRadarPolling();
   setRadarButtonState();
-  $("radar-status-copy").textContent = i18n?.locale() === "en" ? "Radar stopped. Current queue has been paused." : "雷达已关闭，当前入库队列也已暂停。";
+  setRadarLive("stopped");
+  state.radarRunResult = "";
+  setRadarCurrentFile("");
   try {
     await api("/taotie/scan/cancel", { method: "POST", body: "{}" });
     await api("/taotie/queue/pause", { method: "POST", body: "{}" });
-    await loadQueue();
   } catch (error) {
     showToast(humanError(error));
   }
 }
 
 function setRadarButtonState() {
-  $("scan-button").textContent = state.radarRunning ? t("radar.stop") : t("radar.scan");
-  $("scan-button").disabled = false;
+  const button = $("scan-button");
+  if (!button) return;
+  button.textContent = state.radarEnabled ? t("radar.stop") : t("radar.scan");
+  button.disabled = false;
+}
+
+function setRadarLive(mode) {
+  const processKeys = {
+    idle: "radar.process.idle",
+    enabled: "radar.process.idle",
+    empty: "radar.process.idle",
+    queued: "radar.process.idle",
+    scanning: "radar.process.judging",
+    discovering: "radar.process.judging",
+    classifying: "radar.process.judging",
+    ingesting: "radar.process.ingesting",
+    graphing: "radar.process.graphing",
+    linking: "radar.process.linking",
+    done: "radar.process.idle",
+    stopped: "radar.process.idle",
+    error: "radar.process.idle",
+  };
+  const switchState = $("radar-switch-state");
+  const processState = $("radar-process-state");
+  if (switchState) {
+    switchState.textContent = t(state.radarEnabled ? "radar.status.on" : "radar.status.off");
+    switchState.classList.toggle("on", state.radarEnabled);
+  }
+  if (processState) processState.textContent = t(processKeys[mode] ?? processKeys.idle);
+  document.querySelector(".radar-home")?.setAttribute("data-mode", mode);
+}
+
+function setRadarCurrentFile(path = "") {
+  const card = $("radar-file-card");
+  const node = $("radar-current-file");
+  if (!card || !node) return;
+  const hasPath = Boolean(path);
+  card.hidden = !hasPath;
+  if (hasPath) node.textContent = fileName(path);
+}
+
+function persistRadarEnabled() {
+  localStorage.setItem(RADAR_ENABLED_KEY, state.radarEnabled ? "true" : "false");
 }
 
 function startRadarPolling() {
   stopRadarPolling();
-  state.radarStatusPoll = window.setInterval(async () => {
+  const poll = async () => {
     try {
-      const status = await api("/taotie/scan/status");
+      const [status, queue] = await Promise.all([
+        api("/taotie/scan/status"),
+        api("/taotie/queue").catch(() => ({})),
+      ]);
       updateRadarProgress(status);
-      if (!status.running && state.radarStatusPoll) stopRadarPolling();
+      updateIngestProgress(queue);
+      updateRadarActivity(status, queue);
+      const pending = queue.pending?.length ?? 0;
+      if (!state.radarRunning && !status.running && !queue.current && !pending && state.radarStatusPoll) {
+        const mode = state.radarEnabled
+          ? (state.radarRunResult === "empty" ? "empty" : "done")
+          : "idle";
+        setRadarLive(mode);
+        setRadarCurrentFile("");
+        stopRadarPolling();
+      }
     } catch {
       stopRadarPolling();
     }
-  }, 650);
+  };
+  poll();
+  state.radarStatusPoll = window.setInterval(poll, 650);
 }
 
 function stopRadarPolling() {
@@ -338,10 +408,58 @@ function updateRadarProgress(status = {}) {
     model_done: modelDone,
   };
 
-  $("radar-scan-progress-label").textContent = `${processedFiles}/${totalFiles}`;
-  $("radar-model-progress-label").textContent = `${modelDone}/${modelTotal}`;
-  $("radar-scan-bar").style.width = progressWidth(processedFiles, totalFiles);
-  $("radar-model-bar").style.width = progressWidth(modelDone, modelTotal);
+  if ($("radar-scan-progress-label")) $("radar-scan-progress-label").textContent = `${processedFiles}/${totalFiles}`;
+  if ($("radar-model-progress-label")) $("radar-model-progress-label").textContent = `${modelDone}/${modelTotal}`;
+  setProgress("radar-scan-bar", processedFiles, totalFiles, status.running);
+  setProgress("radar-model-bar", modelDone, modelTotal, status.running);
+}
+
+function updateIngestProgress(queue = {}) {
+  const done = queue.done?.length ?? 0;
+  const total = Number(queue.total ?? 0);
+  const currentProgress = Number(queue.current?.progress ?? 0);
+  const value = done + (queue.current ? currentProgress : 0);
+  if ($("radar-ingest-progress-label")) $("radar-ingest-progress-label").textContent = `${Math.min(total, Math.round(value))}/${total}`;
+  setProgress("radar-ingest-bar", value, total, Boolean(queue.current));
+}
+
+function updateRadarActivity(status = {}, queue = {}) {
+  const current = queue.current;
+  const pending = queue.pending?.length ?? 0;
+  if (current) {
+    const phase = current.phase || "ingesting";
+    const mode = {
+      reading: "ingesting",
+      saving: "ingesting",
+      graphing: "graphing",
+      linking: "linking",
+      done: "done",
+    }[phase] ?? "ingesting";
+    setRadarLive(mode);
+    setRadarCurrentFile(current.path);
+    return;
+  }
+
+  if (status.running) {
+    setRadarLive(status.current_action === "classifying" ? "classifying" : "discovering");
+    setRadarCurrentFile(status.current_file || "");
+    return;
+  }
+
+  if (pending > 0) {
+    setRadarLive("queued");
+    setRadarCurrentFile("");
+    return;
+  }
+
+  if (state.radarEnabled && !state.radarRunning) {
+    if (state.radarRunResult === "empty") {
+      setRadarLive("empty");
+      setRadarCurrentFile("");
+    } else {
+      setRadarCurrentFile("");
+    }
+  }
 }
 
 function progressWidth(value, total) {
@@ -349,26 +467,24 @@ function progressWidth(value, total) {
   return `${Math.min(100, Math.round((value / total) * 100))}%`;
 }
 
+function setProgress(id, value, total, active = false) {
+  const node = $(id);
+  if (!node) return;
+  node.classList.toggle("indeterminate", active && !total);
+  node.style.width = total ? progressWidth(value, total) : "0%";
+}
+
 function renderScan() {
+  if (!$("radar-summary")) return;
   const safe = safeRadarFiles();
-  const risk = riskRadarFiles();
-  const invalid = invalidRadarFiles();
-  $("radar-ingested-count").textContent = safe.length;
-  $("radar-invalid-count").textContent = invalid.length;
-  $("radar-risk-count").textContent = risk.length;
-  $("radar-source-count").textContent = state.radarFolders.length;
-  $("radar-last-run").textContent =
-    state.radarLastRun || (i18n?.locale() === "en" ? "Never run" : "尚未运行");
   $("radar-summary").textContent = safe.length
     ? (i18n?.locale() === "en" ? `${safe.length} files are being knowledgeized` : `${safe.length} 个文件正在自动知识化`)
     : (i18n?.locale() === "en" ? "Radar found no safe knowledge files" : "雷达暂未发现安全知识文件");
-
-  renderRadarDetail();
 }
 
 async function autoIngestSafeFiles() {
   const selected = safeRadarFiles();
-  if (!selected.length) return;
+  if (!selected.length) return 0;
   await api("/taotie/queue/add", {
     method: "POST",
     body: JSON.stringify({
@@ -377,158 +493,151 @@ async function autoIngestSafeFiles() {
   });
   await api("/taotie/queue/start", { method: "POST", body: "{}" });
   showToast(i18n?.locale() === "en" ? `Radar is knowledgeizing ${selected.length} files` : `雷达正在知识化 ${selected.length} 个文件`);
-}
-
-async function autoWatchRecommendedFolders() {
-  const folders = state.radarFolders.slice(0, 6);
-  await Promise.allSettled(folders.map((folder) => api("/taotie/watcher/add", {
-    method: "POST",
-    body: JSON.stringify({ path: folder.path, scan_mode: "daily", daily_time: "02:00" }),
-  })));
+  return selected.length;
 }
 
 function safeRadarFiles() {
   return state.scanFiles.filter((file) => file.should_ingest && file.privacy_level === "safe" && file.is_knowledge !== false);
 }
 
-function riskRadarFiles() {
-  return state.scanFiles.filter((file) => file.privacy_level === "private" || file.contains_passwords || file.contains_pii);
-}
-
-function invalidRadarFiles() {
-  return state.scanFiles.filter((file) => !file.should_ingest && file.privacy_level !== "private");
-}
-
-function setRadarDetail(detail) {
-  state.radarDetail = detail;
-  $$("[data-radar-detail]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.radarDetail === detail);
-  });
-  renderRadarDetail();
-}
-
-function renderRadarDetail() {
-  const detail = state.radarDetail;
-  const config = {
-    ingested: {
-      title: t("radar.detail.ingested"),
-      empty: i18n?.locale() === "en" ? "No safe knowledge files found this run" : "本次暂无安全知识文件",
-      items: safeRadarFiles(),
-      dot: "success",
-      meta: (file) => [file.ext || "doc", formatSize(file.size), i18n?.locale() === "en" ? "auto ingest" : "自动入库"],
-    },
-    invalid: {
-      title: t("radar.detail.invalid"),
-      empty: i18n?.locale() === "en" ? "No invalid files" : "暂无无效文件",
-      items: invalidRadarFiles(),
-      dot: "",
-      meta: (file) => [file.ext || "file", formatSize(file.size), i18n?.locale() === "en" ? "not knowledge" : "非知识内容"],
-    },
-    privacy: {
-      title: t("radar.detail.privacy"),
-      empty: t("radar.risks.empty"),
-      items: riskRadarFiles(),
-      dot: "risk",
-      meta: (file) => [file.ext || "file", file.contains_passwords ? "password" : "", file.contains_pii ? "PII" : ""].filter(Boolean),
-    },
-    sources: {
-      title: t("radar.detail.sources"),
-      empty: i18n?.locale() === "en" ? "No continuous sources yet" : "暂无持续知识源",
-      items: state.radarFolders,
-      dot: "source",
-      meta: (folder) => [
-        `${folder.knowledge_file_count ?? folder.file_count ?? 0} ${i18n?.locale() === "en" ? "knowledge files" : "个知识文件"}`,
-        folder.is_agent_session ? "Agent" : "Daily",
-      ],
-    },
-  }[detail];
-
-  $("radar-detail-title").textContent = config.title;
-  if (detail === "sources") {
-    renderFolderDetail(config.items, config.empty, config.meta);
-    return;
-  }
-  renderFileDetail(config.items, config.empty, config.dot, config.meta);
-}
-
-function renderFileDetail(files, empty, dot, metaBuilder) {
-  const host = $("scan-list");
-  if (!files.length) {
-    host.className = "radar-feed empty";
-    host.textContent = empty;
-    return;
-  }
-  host.className = "radar-feed";
-  host.innerHTML = files.slice(0, 8).map((file) => `
-    <article class="radar-item">
-      <span class="item-dot ${dot}"></span>
-      <div>
-        <strong>${escapeHtml(fileName(file.path))}</strong>
-        <span>${escapeHtml(file.reason || (i18n?.locale() === "en" ? "AI classified this file" : "AI 已完成判断"))}</span>
-        <div class="tag-row">
-          ${metaBuilder(file).map((item) => `<em>${escapeHtml(String(item))}</em>`).join("")}
-        </div>
-      </div>
-    </article>
-  `).join("");
-}
-
-function renderFolderDetail(folders, empty, metaBuilder) {
-  const host = $("scan-list");
-  if (!folders.length) {
-    host.className = "radar-feed empty";
-    host.textContent = empty;
-    return;
-  }
-  host.className = "radar-feed";
-  host.innerHTML = folders.slice(0, 8).map((folder) => `
-    <article class="radar-item">
-      <span class="item-dot source"></span>
-      <div>
-      <strong>${escapeHtml(fileName(folder.path) || folder.path)}</strong>
-      <span>${escapeHtml(folder.path)}</span>
-      <div class="tag-row">
-        ${metaBuilder(folder).map((item) => `<em>${escapeHtml(String(item))}</em>`).join("")}
-      </div>
-      </div>
-    </article>
-  `).join("");
-}
-
-async function loadQueue() {
-  try {
-    const queue = await api("/taotie/queue");
-    const pending = queue.pending?.length ?? 0;
-    const done = queue.done?.length ?? 0;
-    const errors = queue.error?.length ?? 0;
-    $("queue-summary").textContent = i18n?.locale() === "en"
-      ? `${pending} pending · ${done} done · ${errors} errors`
-      : `${pending} 待处理 · ${done} 已完成 · ${errors} 错误`;
-    $("radar-queue-state").textContent = queue.current
-      ? (i18n?.locale() === "en" ? "Knowledgeizing" : "知识化中")
-      : (pending ? (i18n?.locale() === "en" ? "Queued" : "队列中") : "Idle");
-    $("queue-list").hidden = true;
-    $("queue-list").innerHTML = "";
-  } catch {
-    $("queue-summary").textContent = i18n?.locale() === "en" ? "Queue unavailable" : "队列状态不可用";
-    $("queue-list").innerHTML = "";
-  }
-}
-
 async function loadRadarDashboard() {
-  await Promise.allSettled([loadQueue(), loadWatcher()]);
-  if (!state.scanFiles.length) renderRadarDetail();
+  await loadWatcher();
+  setRadarButtonState();
+  setRadarLive(state.radarEnabled ? "enabled" : "idle");
+  setRadarCurrentFile("");
+  if (state.radarEnabled && !state.radarRunning && !state.radarAutostarted) {
+    state.radarAutostarted = true;
+    startScan();
+  }
 }
 
 async function loadWatcher() {
   try {
     const response = await api("/taotie/watcher");
     state.radarFolders = response.folders ?? state.radarFolders;
-    $("radar-source-count").textContent = state.radarFolders.length;
-    renderRadarDetail();
+    return state.radarFolders;
   } catch {
-    renderRadarDetail();
+    // The rest of the radar dashboard can still work without watcher details.
+    return state.radarFolders;
   }
+}
+
+async function loadRadarManager() {
+  const folders = await loadWatcher();
+  state.radarManageFolders = folders;
+  const interval = folders.find((folder) => folder.scan_mode === "interval")?.interval_hours ?? 1;
+  $("radar-interval").value = String(interval);
+  renderRadarFolders();
+}
+
+function renderRadarFolders() {
+  const host = $("radar-folder-list");
+  const folders = state.radarManageFolders;
+  if (!folders.length) {
+    host.innerHTML = `<section class="empty slim">${t("radar.manage.empty")}</section>`;
+    return;
+  }
+  host.innerHTML = folders.map((folder) => `
+    <article class="source radar-folder-row">
+      <div>
+        <strong>${escapeHtml(folder.path)}</strong>
+        <span>${intervalLabel(folder.interval_hours ?? 1)}</span>
+      </div>
+      <button class="ghost" type="button" data-remove-radar-folder="${escapeHtml(folder.path)}">${t("radar.manage.remove")}</button>
+    </article>
+  `).join("");
+  $$("[data-remove-radar-folder]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const path = button.dataset.removeRadarFolder;
+      await api("/taotie/watcher/remove", {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      });
+      showToast(t("radar.manage.removed"));
+      await loadRadarManager();
+    });
+  });
+}
+
+async function addRadarFolder() {
+  const input = $("radar-folder-input");
+  const path = input.value.trim();
+  if (!path) return;
+  await saveRadarFolder(path, Number($("radar-interval").value || 1));
+  input.value = "";
+  await loadRadarManager();
+}
+
+async function saveRadarSettings() {
+  const interval = Number($("radar-interval").value || 1);
+  for (const folder of state.radarManageFolders) {
+    await saveRadarFolder(folder.path, interval);
+  }
+  showToast(t("radar.manage.saved"));
+  await loadRadarManager();
+}
+
+async function saveRadarFolder(path, intervalHours) {
+  await api("/taotie/watcher/add", {
+    method: "POST",
+    body: JSON.stringify({
+      path,
+      scan_mode: "interval",
+      interval_hours: intervalHours,
+    }),
+  });
+}
+
+function intervalLabel(hours) {
+  return t(`radar.interval.${Number(hours) || 1}`);
+}
+
+async function loadGmindLogs() {
+  const host = $("gmind-log-list");
+  try {
+    const [recent, radar] = await Promise.allSettled([
+      api("/recent?limit=20"),
+      api("/taotie/history?limit=30"),
+    ]);
+    const recentRecords = recent.status === "fulfilled" ? recent.value.results ?? [] : [];
+    const radarRecords = radar.status === "fulfilled" ? radar.value.records ?? [] : [];
+    const records = [
+      ...recentRecords.map((record) => ({
+        kind: "recent",
+        title: record.title || record.slug,
+        subtitle: record.slug || record.type || "",
+        status: "recent",
+      })),
+      ...radarRecords.map((record) => ({
+        kind: "radar",
+        title: fileName(record.path),
+        subtitle: record.path,
+        status: record.status,
+        error: record.error,
+      })),
+    ];
+    if (!records.length) {
+      host.innerHTML = `<section class="empty slim">${t("logs.empty")}</section>`;
+      return;
+    }
+    host.innerHTML = records.map((record) => `
+      <article class="source radar-log-row">
+        <div>
+          <strong>${escapeHtml(record.title)}</strong>
+          <span>${escapeHtml(record.subtitle)}</span>
+          ${record.error ? `<span>${escapeHtml(record.error)}</span>` : ""}
+        </div>
+        <span class="log-state ${escapeHtml(record.status)}">${logStatus(record.status, record.kind)}</span>
+      </article>
+    `).join("");
+  } catch (error) {
+    host.innerHTML = `<section class="empty slim">${escapeHtml(humanError(error))}</section>`;
+  }
+}
+
+function logStatus(status, kind = "radar") {
+  if (kind === "recent") return t("logs.type.recent");
+  return t(`radar.log.${status}`) || status;
 }
 
 async function loadModelConfig() {
@@ -666,19 +775,12 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function fileName(path) {
-  return String(path || "").split("/").pop() || path;
-}
-
-function formatSize(bytes) {
-  const value = Number(bytes || 0);
-  if (value < 1024) return `${value}B`;
-  if (value < 1024 * 1024) return `${Math.round(value / 1024)}KB`;
-  return `${(value / 1024 / 1024).toFixed(1)}MB`;
-}
-
 function humanError(error) {
   return String(error?.message || error || "未知错误");
+}
+
+function fileName(path) {
+  return String(path || "").split("/").pop() || path;
 }
 
 document.addEventListener("click", (event) => {
@@ -703,20 +805,18 @@ $("copy-answer").addEventListener("click", async () => {
   showToast(i18n?.locale() === "en" ? "Answer copied" : "答案已复制");
 });
 $("scan-button").addEventListener("click", () => {
-  if (state.radarRunning) {
+  if (state.radarEnabled) {
     stopRadar();
   } else {
     startScan();
   }
 });
-$$("[data-radar-detail]").forEach((button) => {
-  button.addEventListener("click", () => setRadarDetail(button.dataset.radarDetail));
+$("add-radar-folder").addEventListener("click", addRadarFolder);
+$("radar-folder-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") addRadarFolder();
 });
-$("queue-pause").addEventListener("click", async () => {
-  await api("/taotie/queue/pause", { method: "POST", body: "{}" });
-  showToast(i18n?.locale() === "en" ? "Paused" : "已暂停");
-  await loadQueue();
-});
+$("save-radar-settings").addEventListener("click", saveRadarSettings);
+$("refresh-gmind-logs").addEventListener("click", loadGmindLogs);
 $("refresh-home").addEventListener("click", loadHome);
 $("restart-server").addEventListener("click", async () => {
   await invokeCommand("restart_server");
