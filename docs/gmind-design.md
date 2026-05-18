@@ -230,6 +230,37 @@ LLM 综合回答
 必要时生成新的 claim 或 task
 ```
 
+查询时应优先读取结构化对象，再用向量检索补充原文证据。
+
+常见查询入口可以分为：
+
+```text
+当前事实 / 结论查询  -> claims + relations + source_chunks
+时间顺序查询          -> events
+冲突查询              -> claims + relations(predicate = contradicts)
+历史变化查询          -> claims.status + relations + logs
+证据追溯查询          -> relations(predicate = supported_by) -> source_chunks -> sources
+开放问题查询          -> tasks
+```
+
+为了避免每次查询都手写复杂 join，可以在读取层提供稳定视图或 helper query：
+
+```text
+entity_claims_view
+通过 relations 读取某个 entity 相关的 claims。
+
+claim_current_view
+默认读取 active / disputed / stale claims，排除 superseded / retracted / archived。
+
+claim_conflict_view
+读取 disputed claims，以及 claim --contradicts--> claim 的关系。
+
+claim_lineage_view
+读取 claim 的 supported_by / contradicts / supersedes / derived_from 等关系。
+```
+
+这些读取视图不改变主数据模型，只是把常用查询路径固定下来。
+
 例如用户问：
 
 ```text
@@ -446,10 +477,39 @@ id
 source_id
 chunk_index
 chunk_text
+embedding_model
+embedding_dim
 embedding
 metadata_json
 created_at
 ```
+
+#### 向量索引实现
+
+第一版建议使用 Postgres + pgvector。
+
+`source_chunks.embedding` 存 pgvector 的 `vector` 类型，维度由 embedding model 决定。
+
+例如：
+
+```text
+embedding_model = embedding-model-name
+embedding_dim = 1536
+embedding = vector(1536)
+```
+
+这样 gmind 可以先用结构化条件过滤，再做向量相似度检索。
+
+例如：
+
+```text
+source_id in (...)
+created_at >= ...
+sources.trust_score >= ...
+order by embedding <=> query_embedding
+```
+
+如果未来数据量大到 pgvector 不够用，可以把向量索引拆到独立向量数据库。但即使拆出去，`source_chunks.id` 仍然应该作为证据锚点。
 
 ### 6.3 entities
 
@@ -499,10 +559,62 @@ description
 canonical_name
 aliases_json
 status
+dedupe_key
+external_ids_json
+merge_status
+merged_into_entity_id
 metadata_json
 created_at
 updated_at
 ```
+
+#### 去重和合并
+
+LLM 多次 ingest 时，可能把同一个现实对象创建成多个 entity。
+
+例如：
+
+```text
+项目 A
+Project A
+A 项目
+本项目
+客户官网改版项目
+```
+
+如果不做去重，同一个对象的 claims、events、tasks 会分散在多个页面里，查询和冲突检测也会漏掉信息。
+
+entity 去重的目标是：
+
+```text
+把同一个现实对象收敛到同一个知识节点。
+```
+
+去重可以分三步：
+
+```text
+候选发现
+用 canonical_name、aliases_json、external_ids_json、dedupe_key、名称相似度、embedding 和共同关系找可能重复的 entity。
+
+判定
+高置信度时自动确认 same_as / merged_into。
+中置信度时生成 task，由用户或 LLM 后续确认。
+低置信度时保持分开。
+
+合并
+不物理删除旧 entity。
+旧 entity 标记为 merged，并通过 merged_into_entity_id 指向 canonical entity。
+```
+
+相关关系可以写入 `relations`：
+
+```text
+entity --same_as--> entity
+entity --merged_into--> entity
+entity --not_same_as--> entity
+```
+
+查询时，应先把 merged entity resolve 到 canonical entity，再读取相关 claims、events、tasks 和 relations。
 
 #### 示例
 
@@ -551,7 +663,7 @@ entity_type = topic
 
 - 查询回答
 - 实体页面的关键事实和当前结论
-- relations 建立证据链
+- relations 建立实体关联和证据链
 - tasks 验证或反驳断言
 
 #### 建议字段
@@ -563,6 +675,9 @@ claim_type
 origin
 status
 confidence
+as_of
+valid_from
+valid_to
 source_id
 source_chunk_id
 metadata_json
@@ -587,6 +702,79 @@ extracted     从资料直接抽取
 inferred      LLM 推理得出
 user_stated   用户直接表达
 ```
+
+#### status
+
+```text
+active        当前有效
+disputed      存在冲突，待确认
+superseded    已被新 claim 替代
+retracted     确认错误，撤回
+stale         依赖资料变化，需要重算
+archived      历史保留
+```
+
+#### 与 entity 的关联
+
+`claims` 表不直接保存 `entity_id`。
+
+claim 和 entity 的关联统一走 `relations`：
+
+```text
+claim --about--> entity
+claim --mentions--> entity
+```
+
+其中：
+
+```text
+about
+表示这条 claim 主要是在说哪个 entity，适合实体页面和核心事实查询。
+
+mentions
+表示这条 claim 文本中提到了哪个 entity，但不一定是主语义对象。
+```
+
+这样可以避免在 `claims` 表和 `relations` 表里同时维护 entity 关系。
+
+为了提高读取效率，查询层可以提供 `entity_claims_view`：
+
+```text
+entity_claims_view(entity_id)
+  -> relations where object_type = entity and object_id = entity_id
+  -> predicate in about / mentions
+  -> join claims
+```
+
+也就是说：
+
+```text
+写入层：claim/entity 关系全部写 relations。
+读取层：用 view 或 helper query 封装常用 join。
+```
+
+#### 来源和溯源
+
+`source_id` 和 `source_chunk_id` 只表示直接来源。
+
+它们主要适用于：
+
+```text
+origin = extracted
+origin = user_stated
+```
+
+对于 `origin = inferred` 的 claim，来源通常不是单个 source，而是多个 claims、events 或 source_chunks。
+
+这类溯源链应通过 `relations` 表表达：
+
+```text
+inferred claim --derived_from--> claim
+inferred claim --derived_from--> event
+inferred claim --supported_by--> source_chunk
+```
+
+如果 inferred claim 依赖的 claim 或 event 发生变化，应将 inferred claim 标记为 `stale`，并生成重新评估的 task。
 
 #### 示例
 
@@ -690,7 +878,8 @@ related_entity_id = 项目 A
 - event 涉及哪个 entity
 - claim 由哪个 source_chunk 支持
 - claim 和 claim 是否冲突
-- inferred claim 从哪些 events 推理而来
+- claim 是否替代了另一个 claim
+- inferred claim 从哪些 claims / events 推理而来
 - task 关联哪个 entity
 - entity 和 entity 之间有什么关系
 
@@ -734,13 +923,50 @@ updated_at
 #### 示例
 
 ```text
+claim --about--> entity
 claim --mentions--> entity
 event --involves--> entity
 claim --supported_by--> source_chunk
 claim --contradicts--> claim
+claim --supersedes--> claim
 claim --derived_from--> event
+claim --derived_from--> claim
 task --about--> entity
 entity --related_to--> entity
+entity --same_as--> entity
+entity --merged_into--> entity
+entity --not_same_as--> entity
+```
+
+#### 常用 predicate 边界
+
+```text
+about
+表示主体对象主要关于另一个对象。
+例如 claim --about--> entity。
+
+mentions
+表示文本中提到另一个对象。
+例如 claim --mentions--> entity。
+
+supported_by
+表示主体对象有直接证据支持。
+例如 claim --supported_by--> source_chunk。
+
+derived_from
+表示主体对象由其他结构化对象推理得出。
+例如 inferred claim --derived_from--> event。
+
+contradicts
+表示两个 claim 互相冲突。
+发现该关系后，相关 claim 通常应标记为 disputed，并生成 resolve_conflict task。
+
+supersedes
+表示一个新 claim 替代旧 claim。
+旧 claim 通常应标记为 superseded。
+
+same_as / merged_into / not_same_as
+用于 entity 去重和合并。
 ```
 
 ### 6.7 tasks
@@ -795,6 +1021,12 @@ related_entity_id
 source_id
 claim_id
 event_id
+scheduled_at
+next_run_at
+locked_at
+locked_by
+attempt_count
+last_error
 metadata_json
 created_at
 updated_at
@@ -812,6 +1044,48 @@ extract_events      抽取事件
 resolve_conflict    解决冲突
 summarize_entity    更新实体总结
 monitor_entity      监控实体
+```
+
+#### status
+
+```text
+open        等待执行
+scheduled   已安排未来执行
+running     正在执行
+blocked     被外部条件阻塞
+completed   已完成
+failed      执行失败
+cancelled   已取消
+```
+
+#### 调度方式
+
+`tasks` 表只负责保存任务状态，不负责自己执行任务。
+
+gmind runtime 中应有一个 worker / scheduler 负责调度。
+
+第一版可以使用轮询：
+
+```text
+定期扫描 status in open / scheduled 的 tasks
+筛选 next_run_at <= now 或 next_run_at 为空
+按 priority desc, due_at asc, created_at asc 排序
+取一批任务执行
+执行前写入 locked_at / locked_by
+失败时增加 attempt_count 并记录 last_error
+```
+
+任务可以由三类触发产生：
+
+```text
+event-driven
+新 source ingest 后触发 extract / verify / resolve_conflict。
+
+scheduled
+定时扫描 open tasks，执行主动研究、监控和复查。
+
+user-triggered
+用户查询或手动要求时触发相关 task。
 ```
 
 #### 示例
@@ -895,10 +1169,6 @@ source 1 -> many source_chunks
 source 1 -> many claims
 source 1 -> many events
 
-entity 1 -> many claims
-entity 1 -> many events
-entity 1 -> many tasks
-
 claim many -> many entities
 event many -> many entities
 task many -> many entities
@@ -919,6 +1189,74 @@ relations 是图谱入口
 tasks 是主动行动入口
 logs 是系统历史入口
 ```
+
+其中 claim 与 entity 的关联统一通过 `relations` 表表达。
+
+event / task 可以保留高频查询字段，例如 `related_entity_id`、`claim_id`、`event_id`，但完整图谱关系仍然可以写入 `relations`。
+
+例如：
+
+```text
+claim --about--> entity
+event --involves--> entity
+task --about--> entity
+```
+
+查询实体页面时，对 claim 使用读取视图封装 relations 查询。
+
+例如：
+
+```text
+entity_claims_view
+```
+
+### 7.1 claim 更新、冲突和历史变化
+
+claim 的原始含义应尽量稳定。
+
+新资料进入后，优先更新证据、状态、置信度和关系；必要时创建新的 claim，而不是直接覆盖旧 claim。
+
+常见更新方式：
+
+```text
+新资料支持已有 claim
+增加 claim --supported_by--> source_chunk，提高 confidence。
+
+新资料反驳已有 claim
+新建相反 claim，建立 claim --contradicts--> claim。
+相关 claim 标记为 disputed，并生成 resolve_conflict task。
+
+新资料让 claim 过期
+新建 active claim，旧 claim 标记为 superseded。
+建立 new claim --supersedes--> old claim。
+
+新资料让 claim 更精确
+新建更精确 claim，旧 claim 标记为 superseded。
+
+inferred claim 的依赖变化
+将 inferred claim 标记为 stale，并生成重新评估 task。
+```
+
+历史变化主要通过三类信息读取：
+
+```text
+claims.status / updated_at
+表示 claim 当前处于什么状态，以及最近何时变化。
+
+relations
+表示 claim 被哪些证据支持、被哪些 claim 反驳、被哪个新 claim 替代、从哪些对象推理而来。
+
+logs
+表示 gmind 在什么时候执行了 ingest、冲突检测、任务完成、状态更新等系统动作。
+```
+
+如果未来需要字段级版本管理，可以再增加：
+
+```text
+claim_versions
+```
+
+第一版不必先引入完整版本表。
 
 ## 8. 合同和付款顺序示例
 

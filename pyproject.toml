@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gmind"
+version = "0.1.0"
+description = "A proactive personal AI knowledge base."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["openai>=2.0", "psycopg[binary]>=3.2"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+gmind = "gmind.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
