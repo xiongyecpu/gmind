@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Optional, Sequence
 
 from gmind import __version__
+from gmind.ask import AskResult, answer_question
 from gmind.config import DEFAULT_CONFIG_PATH, init_config, load_config
 from gmind.db import check_database, init_database
 from gmind.embed import embed_pending_chunks, embed_source_chunks
@@ -29,6 +31,7 @@ from gmind.knowledge import (
     list_tasks,
 )
 from gmind.providers import build_embedding_provider, build_llm_provider
+from gmind.solo import judge_solo_add_file, record_solo_add_decision
 from gmind.sources import get_source, list_sources
 
 
@@ -36,7 +39,193 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gmind")
     parser.add_argument("--version", action="version", version=f"gmind {__version__}")
 
-    subcommands = parser.add_subparsers(dest="command", required=True)
+    subcommands = parser.add_subparsers(
+        dest="command",
+        required=True,
+        metavar="{setup,add,ask,status,doctor,debug,init,config}",
+    )
+
+    setup_parser = subcommands.add_parser("setup", help="Create a local config file.")
+    setup_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Config file path. Defaults to gmind.toml.",
+    )
+    setup_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite the config file if it already exists.",
+    )
+    setup_parser.set_defaults(handler=handle_init)
+
+    add_parser = subcommands.add_parser("add", help="Add material to gmind.")
+    add_subcommands = add_parser.add_subparsers(dest="add_command", required=True)
+    add_text_parser = add_subcommands.add_parser(
+        "text", help="Add a plain text file and process it."
+    )
+    add_text_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Config file path. Defaults to gmind.toml.",
+    )
+    add_text_parser.add_argument(
+        "--title",
+        help="Source title. If omitted, gmind asks the LLM to infer one.",
+    )
+    add_text_input = add_text_parser.add_mutually_exclusive_group(required=True)
+    add_text_input.add_argument(
+        "--file",
+        type=Path,
+        help="Path to the text file to add.",
+    )
+    add_text_input.add_argument(
+        "--text",
+        help="Text content to add directly.",
+    )
+    add_text_input.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read text content from standard input.",
+    )
+    add_text_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=DEFAULT_CHUNK_SIZE,
+        help=f"Chunk size in characters. Defaults to {DEFAULT_CHUNK_SIZE}.",
+    )
+    add_text_parser.add_argument(
+        "--chunk-overlap",
+        type=int,
+        default=DEFAULT_CHUNK_OVERLAP,
+        help=f"Chunk overlap in characters. Defaults to {DEFAULT_CHUNK_OVERLAP}.",
+    )
+    add_text_parser.add_argument(
+        "--skip-embed",
+        action="store_true",
+        help="Only store the source; do not generate embeddings.",
+    )
+    add_text_parser.add_argument(
+        "--skip-extract",
+        action="store_true",
+        help="Only store/embed the source; do not run LLM extraction.",
+    )
+    add_text_parser.add_argument(
+        "--solo",
+        action="store_true",
+        help="Ask the LLM whether this file should be added before importing.",
+    )
+    add_text_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only return the solo decision; do not import, embed, or extract.",
+    )
+    add_text_parser.add_argument("--json", action="store_true")
+    add_text_parser.set_defaults(handler=handle_add_text)
+
+    add_markdown_parser = add_subcommands.add_parser(
+        "markdown", help="Add Markdown content and process it."
+    )
+    add_markdown_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Config file path. Defaults to gmind.toml.",
+    )
+    add_markdown_parser.add_argument(
+        "--title",
+        help="Source title. If omitted, gmind asks the LLM to infer one.",
+    )
+    add_markdown_input = add_markdown_parser.add_mutually_exclusive_group(required=True)
+    add_markdown_input.add_argument(
+        "--file",
+        type=Path,
+        help="Path to the Markdown file to add.",
+    )
+    add_markdown_input.add_argument(
+        "--text",
+        help="Markdown content to add directly.",
+    )
+    add_markdown_input.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read Markdown content from standard input.",
+    )
+    add_markdown_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=DEFAULT_CHUNK_SIZE,
+        help=f"Chunk size in characters. Defaults to {DEFAULT_CHUNK_SIZE}.",
+    )
+    add_markdown_parser.add_argument(
+        "--chunk-overlap",
+        type=int,
+        default=DEFAULT_CHUNK_OVERLAP,
+        help=f"Chunk overlap in characters. Defaults to {DEFAULT_CHUNK_OVERLAP}.",
+    )
+    add_markdown_parser.add_argument(
+        "--skip-embed",
+        action="store_true",
+        help="Only store the source; do not generate embeddings.",
+    )
+    add_markdown_parser.add_argument(
+        "--skip-extract",
+        action="store_true",
+        help="Only store/embed the source; do not run LLM extraction.",
+    )
+    add_markdown_parser.add_argument(
+        "--solo",
+        action="store_true",
+        help="Ask the LLM whether this file should be added before importing.",
+    )
+    add_markdown_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only return the solo decision; do not import, embed, or extract.",
+    )
+    add_markdown_parser.add_argument("--json", action="store_true")
+    add_markdown_parser.set_defaults(handler=handle_add_text)
+
+    ask_parser = subcommands.add_parser("ask", help="Ask your knowledge base.")
+    ask_parser.add_argument("question", nargs="+", help="Question to ask.")
+    ask_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Config file path. Defaults to gmind.toml.",
+    )
+    ask_parser.add_argument("--json", action="store_true")
+    ask_parser.set_defaults(handler=handle_ask)
+
+    status_parser = subcommands.add_parser(
+        "status", help="Show whether gmind is ready."
+    )
+    status_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Config file path. Defaults to gmind.toml.",
+    )
+    status_parser.add_argument("--json", action="store_true")
+    status_parser.set_defaults(handler=handle_status)
+
+    doctor_parser = subcommands.add_parser(
+        "doctor", help="Diagnose local gmind setup."
+    )
+    doctor_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Config file path. Defaults to gmind.toml.",
+    )
+    doctor_parser.add_argument("--json", action="store_true")
+    doctor_parser.set_defaults(handler=handle_doctor)
+
+    debug_parser = subcommands.add_parser(
+        "debug", help="Developer inspection and pipeline commands."
+    )
+    _add_debug_commands(debug_parser)
 
     init_parser = subcommands.add_parser("init", help="Create a gmind config file.")
     init_parser.add_argument(
@@ -67,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     config_show_parser.set_defaults(handler=handle_config_show)
 
-    db_parser = subcommands.add_parser("db", help="Manage the gmind database.")
+    db_parser = subcommands.add_parser("db", help=argparse.SUPPRESS)
     db_subcommands = db_parser.add_subparsers(dest="db_command", required=True)
     db_init_parser = db_subcommands.add_parser(
         "init", help="Create database tables, indexes, and views."
@@ -91,7 +280,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     db_check_parser.set_defaults(handler=handle_db_check)
 
-    ingest_parser = subcommands.add_parser("ingest", help="Ingest sources.")
+    ingest_parser = subcommands.add_parser("ingest", help=argparse.SUPPRESS)
     ingest_subcommands = ingest_parser.add_subparsers(
         dest="ingest_command", required=True
     )
@@ -125,7 +314,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ingest_text_parser.set_defaults(handler=handle_ingest_text)
 
-    sources_parser = subcommands.add_parser("sources", help="List sources.")
+    sources_parser = subcommands.add_parser("sources", help=argparse.SUPPRESS)
     sources_parser.add_argument(
         "--config",
         type=Path,
@@ -140,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sources_parser.set_defaults(handler=handle_sources_list)
 
-    source_parser = subcommands.add_parser("source", help="Inspect one source.")
+    source_parser = subcommands.add_parser("source", help=argparse.SUPPRESS)
     source_subcommands = source_parser.add_subparsers(
         dest="source_command", required=True
     )
@@ -160,7 +349,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     source_show_parser.set_defaults(handler=handle_source_show)
 
-    extract_parser = subcommands.add_parser("extract", help="Extract knowledge.")
+    extract_parser = subcommands.add_parser("extract", help=argparse.SUPPRESS)
     extract_subcommands = extract_parser.add_subparsers(
         dest="extract_command", required=True
     )
@@ -188,7 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     extract_llm_parser.set_defaults(handler=handle_extract_llm)
 
-    embed_parser = subcommands.add_parser("embed", help="Embed source chunks.")
+    embed_parser = subcommands.add_parser("embed", help=argparse.SUPPRESS)
     embed_subcommands = embed_parser.add_subparsers(dest="embed_command", required=True)
     embed_source_parser = embed_subcommands.add_parser(
         "source", help="Embed pending chunks for one source."
@@ -214,7 +403,7 @@ def build_parser() -> argparse.ArgumentParser:
     embed_pending_parser.add_argument("--limit", type=int, default=20)
     embed_pending_parser.set_defaults(handler=handle_embed_pending)
 
-    entities_parser = subcommands.add_parser("entities", help="List entities.")
+    entities_parser = subcommands.add_parser("entities", help=argparse.SUPPRESS)
     entities_parser.add_argument(
         "--config",
         type=Path,
@@ -222,9 +411,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Config file path. Defaults to gmind.toml.",
     )
     entities_parser.add_argument("--limit", type=int, default=20)
+    entities_parser.add_argument("--json", action="store_true")
     entities_parser.set_defaults(handler=handle_entities_list)
 
-    entity_parser = subcommands.add_parser("entity", help="Inspect one entity.")
+    entity_parser = subcommands.add_parser("entity", help=argparse.SUPPRESS)
     entity_subcommands = entity_parser.add_subparsers(
         dest="entity_command", required=True
     )
@@ -236,9 +426,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CONFIG_PATH,
         help="Config file path. Defaults to gmind.toml.",
     )
+    entity_show_parser.add_argument("--json", action="store_true")
     entity_show_parser.set_defaults(handler=handle_entity_show)
 
-    claims_parser = subcommands.add_parser("claims", help="List claims.")
+    claims_parser = subcommands.add_parser("claims", help=argparse.SUPPRESS)
     claims_parser.add_argument(
         "--config",
         type=Path,
@@ -250,7 +441,7 @@ def build_parser() -> argparse.ArgumentParser:
     claims_parser.add_argument("--entity")
     claims_parser.set_defaults(handler=handle_claims_list)
 
-    claim_parser = subcommands.add_parser("claim", help="Inspect one claim.")
+    claim_parser = subcommands.add_parser("claim", help=argparse.SUPPRESS)
     claim_subcommands = claim_parser.add_subparsers(dest="claim_command", required=True)
     claim_show_parser = claim_subcommands.add_parser("show", help="Show a claim.")
     claim_show_parser.add_argument("claim_id", type=int)
@@ -262,7 +453,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     claim_show_parser.set_defaults(handler=handle_claim_show)
 
-    events_parser = subcommands.add_parser("events", help="List events.")
+    events_parser = subcommands.add_parser("events", help=argparse.SUPPRESS)
     events_subcommands = events_parser.add_subparsers(dest="events_command")
     events_parser.add_argument(
         "--config",
@@ -284,7 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     events_timeline_parser.set_defaults(handler=handle_events_timeline)
 
-    relations_parser = subcommands.add_parser("relations", help="List relations.")
+    relations_parser = subcommands.add_parser("relations", help=argparse.SUPPRESS)
     relations_subcommands = relations_parser.add_subparsers(dest="relations_command")
     relations_parser.add_argument(
         "--config",
@@ -307,7 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     relations_for_parser.set_defaults(handler=handle_relations_for)
 
-    tasks_parser = subcommands.add_parser("tasks", help="List tasks.")
+    tasks_parser = subcommands.add_parser("tasks", help=argparse.SUPPRESS)
     tasks_parser.add_argument(
         "--config",
         type=Path,
@@ -317,7 +508,7 @@ def build_parser() -> argparse.ArgumentParser:
     tasks_parser.add_argument("--limit", type=int, default=20)
     tasks_parser.set_defaults(handler=handle_tasks_list)
 
-    task_parser = subcommands.add_parser("task", help="Inspect one task.")
+    task_parser = subcommands.add_parser("task", help=argparse.SUPPRESS)
     task_subcommands = task_parser.add_subparsers(dest="task_command", required=True)
     task_show_parser = task_subcommands.add_parser("show", help="Show a task.")
     task_show_parser.add_argument("task_id", type=int)
@@ -329,7 +520,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     task_show_parser.set_defaults(handler=handle_task_show)
 
-    logs_parser = subcommands.add_parser("logs", help="List system logs.")
+    logs_parser = subcommands.add_parser("logs", help=argparse.SUPPRESS)
     logs_parser.add_argument(
         "--config",
         type=Path,
@@ -339,7 +530,170 @@ def build_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument("--limit", type=int, default=20)
     logs_parser.set_defaults(handler=handle_logs_list)
 
+    hidden_commands = {
+        "db",
+        "ingest",
+        "sources",
+        "source",
+        "extract",
+        "embed",
+        "entities",
+        "entity",
+        "claims",
+        "claim",
+        "events",
+        "relations",
+        "tasks",
+        "task",
+        "logs",
+    }
+    subcommands._choices_actions = [
+        action
+        for action in subcommands._choices_actions
+        if action.dest not in hidden_commands
+    ]
+
     return parser
+
+
+def _add_debug_commands(debug_parser: argparse.ArgumentParser) -> None:
+    debug_subcommands = debug_parser.add_subparsers(
+        dest="debug_command", required=True
+    )
+
+    db_parser = debug_subcommands.add_parser("db", help="Database diagnostics.")
+    db_subcommands = db_parser.add_subparsers(dest="db_command", required=True)
+    db_init_parser = db_subcommands.add_parser("init")
+    db_init_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    db_init_parser.set_defaults(handler=handle_db_init)
+    db_check_parser = db_subcommands.add_parser("check")
+    db_check_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    db_check_parser.set_defaults(handler=handle_db_check)
+
+    pipeline_parser = debug_subcommands.add_parser(
+        "pipeline", help="Run individual pipeline stages."
+    )
+    pipeline_subcommands = pipeline_parser.add_subparsers(
+        dest="pipeline_command", required=True
+    )
+    pipeline_ingest_parser = pipeline_subcommands.add_parser("ingest-text")
+    pipeline_ingest_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    pipeline_ingest_parser.add_argument("--title", required=True)
+    pipeline_ingest_parser.add_argument("--file", type=Path, required=True)
+    pipeline_ingest_parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
+    pipeline_ingest_parser.add_argument(
+        "--chunk-overlap", type=int, default=DEFAULT_CHUNK_OVERLAP
+    )
+    pipeline_ingest_parser.set_defaults(handler=handle_ingest_text)
+
+    pipeline_embed_parser = pipeline_subcommands.add_parser("embed-source")
+    pipeline_embed_parser.add_argument("source_id", type=int)
+    pipeline_embed_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    pipeline_embed_parser.set_defaults(handler=handle_embed_source)
+    pipeline_embed_pending_parser = pipeline_subcommands.add_parser("embed-pending")
+    pipeline_embed_pending_parser.add_argument(
+        "--config", type=Path, default=DEFAULT_CONFIG_PATH
+    )
+    pipeline_embed_pending_parser.add_argument("--limit", type=int, default=20)
+    pipeline_embed_pending_parser.set_defaults(handler=handle_embed_pending)
+
+    pipeline_extract_stub_parser = pipeline_subcommands.add_parser("extract-stub")
+    pipeline_extract_stub_parser.add_argument("source_id", type=int)
+    pipeline_extract_stub_parser.add_argument(
+        "--config", type=Path, default=DEFAULT_CONFIG_PATH
+    )
+    pipeline_extract_stub_parser.set_defaults(handler=handle_extract_stub)
+    pipeline_extract_llm_parser = pipeline_subcommands.add_parser("extract-llm")
+    pipeline_extract_llm_parser.add_argument("source_id", type=int)
+    pipeline_extract_llm_parser.add_argument(
+        "--config", type=Path, default=DEFAULT_CONFIG_PATH
+    )
+    pipeline_extract_llm_parser.set_defaults(handler=handle_extract_llm)
+
+    sources_parser = debug_subcommands.add_parser("sources")
+    sources_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    sources_parser.add_argument("--limit", type=int, default=20)
+    sources_parser.set_defaults(handler=handle_sources_list)
+
+    source_parser = debug_subcommands.add_parser("source")
+    source_subcommands = source_parser.add_subparsers(
+        dest="source_command", required=True
+    )
+    source_show_parser = source_subcommands.add_parser("show")
+    source_show_parser.add_argument("source_id", type=int)
+    source_show_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    source_show_parser.add_argument("--chunk-preview", type=int, default=160)
+    source_show_parser.set_defaults(handler=handle_source_show)
+
+    entities_parser = debug_subcommands.add_parser("entities")
+    entities_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    entities_parser.add_argument("--limit", type=int, default=20)
+    entities_parser.add_argument("--json", action="store_true")
+    entities_parser.set_defaults(handler=handle_entities_list)
+
+    entity_parser = debug_subcommands.add_parser("entity")
+    entity_subcommands = entity_parser.add_subparsers(
+        dest="entity_command", required=True
+    )
+    entity_show_parser = entity_subcommands.add_parser("show")
+    entity_show_parser.add_argument("identifier")
+    entity_show_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    entity_show_parser.add_argument("--json", action="store_true")
+    entity_show_parser.set_defaults(handler=handle_entity_show)
+
+    claims_parser = debug_subcommands.add_parser("claims")
+    claims_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    claims_parser.add_argument("--limit", type=int, default=20)
+    claims_parser.add_argument("--status")
+    claims_parser.add_argument("--entity")
+    claims_parser.set_defaults(handler=handle_claims_list)
+
+    claim_parser = debug_subcommands.add_parser("claim")
+    claim_subcommands = claim_parser.add_subparsers(
+        dest="claim_command", required=True
+    )
+    claim_show_parser = claim_subcommands.add_parser("show")
+    claim_show_parser.add_argument("claim_id", type=int)
+    claim_show_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    claim_show_parser.set_defaults(handler=handle_claim_show)
+
+    events_parser = debug_subcommands.add_parser("events")
+    events_subcommands = events_parser.add_subparsers(dest="events_command")
+    events_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    events_parser.add_argument("--limit", type=int, default=20)
+    events_parser.set_defaults(handler=handle_events_list)
+    events_timeline_parser = events_subcommands.add_parser("timeline")
+    events_timeline_parser.add_argument("--entity", required=True)
+    events_timeline_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    events_timeline_parser.set_defaults(handler=handle_events_timeline)
+
+    relations_parser = debug_subcommands.add_parser("relations")
+    relations_subcommands = relations_parser.add_subparsers(dest="relations_command")
+    relations_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    relations_parser.add_argument("--limit", type=int, default=20)
+    relations_parser.set_defaults(handler=handle_relations_list)
+    relations_for_parser = relations_subcommands.add_parser("for")
+    relations_for_parser.add_argument("subject_type")
+    relations_for_parser.add_argument("subject_id", type=int)
+    relations_for_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    relations_for_parser.set_defaults(handler=handle_relations_for)
+
+    tasks_parser = debug_subcommands.add_parser("tasks")
+    tasks_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    tasks_parser.add_argument("--limit", type=int, default=20)
+    tasks_parser.set_defaults(handler=handle_tasks_list)
+
+    task_parser = debug_subcommands.add_parser("task")
+    task_subcommands = task_parser.add_subparsers(dest="task_command", required=True)
+    task_show_parser = task_subcommands.add_parser("show")
+    task_show_parser.add_argument("task_id", type=int)
+    task_show_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    task_show_parser.set_defaults(handler=handle_task_show)
+
+    logs_parser = debug_subcommands.add_parser("logs")
+    logs_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    logs_parser.add_argument("--limit", type=int, default=20)
+    logs_parser.set_defaults(handler=handle_logs_list)
 
 
 def handle_init(args: argparse.Namespace) -> int:
@@ -404,6 +758,340 @@ def handle_db_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_status(args: argparse.Namespace) -> int:
+    try:
+        config = load_config(args.config)
+        check = check_database(config.database.url)
+        entities = list_entities(config.database.url, limit=100)
+    except ValueError as error:
+        if args.json:
+            print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+        else:
+            print(f"Config error: {error}", file=sys.stderr)
+            print("Run `gmind setup` to create a config file.", file=sys.stderr)
+        return 2
+    except Exception as error:
+        if args.json:
+            print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+        else:
+            print(f"Status check failed: {error}", file=sys.stderr)
+        return 1
+
+    claim_count = sum(entity.claim_count for entity in entities)
+    event_count = sum(entity.event_count for entity in entities)
+    payload = {
+        "ok": check.ok,
+        "database": {
+            "vector_extension": check.vector_extension,
+            "tables": len(check.tables),
+            "views": len(check.views),
+            "missing_tables": check.missing_tables,
+            "missing_views": check.missing_views,
+        },
+        "knowledge": {
+            "entities": len(entities),
+            "claims": claim_count,
+            "events": event_count,
+        },
+    }
+
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0 if check.ok else 1
+
+    print(f"gmind: {'ready' if check.ok else 'needs attention'}")
+    print(f"database: {'ok' if check.ok else 'not ready'}")
+    print(f"knowledge: {len(entities)} knowledge points, {claim_count} facts, {event_count} events")
+    if check.missing_tables:
+        print("missing tables: " + ", ".join(check.missing_tables))
+    if check.missing_views:
+        print("missing views: " + ", ".join(check.missing_views))
+    return 0 if check.ok else 1
+
+
+def handle_doctor(args: argparse.Namespace) -> int:
+    checks: list[dict[str, object]] = []
+
+    config_exists = args.config.exists()
+    checks.append(
+        {
+            "name": "config",
+            "ok": config_exists,
+            "detail": str(args.config) if config_exists else "config file not found",
+            "fix": None if config_exists else "Run `gmind setup` or open Settings in the app.",
+        }
+    )
+    if not config_exists:
+        return _print_doctor(args, checks, ok=False)
+
+    try:
+        config = load_config(args.config)
+    except ValueError as error:
+        checks.append(
+            {
+                "name": "config_valid",
+                "ok": False,
+                "detail": str(error),
+                "fix": "Check database.url in your config.",
+            }
+        )
+        return _print_doctor(args, checks, ok=False)
+
+    api_key_present = bool(os.getenv(config.models.llm_api_key_env))
+    checks.append(
+        {
+            "name": "api_key",
+            "ok": api_key_present,
+            "detail": config.models.llm_api_key_env,
+            "fix": None
+            if api_key_present
+            else f"Set {config.models.llm_api_key_env} in your shell or app Keychain.",
+        }
+    )
+
+    try:
+        check = check_database(config.database.url)
+        checks.append(
+            {
+                "name": "database",
+                "ok": check.ok,
+                "detail": {
+                    "vector_extension": check.vector_extension,
+                    "tables": len(check.tables),
+                    "views": len(check.views),
+                    "missing_tables": check.missing_tables,
+                    "missing_views": check.missing_views,
+                },
+                "fix": None if check.ok else "Run `gmind debug db init` or check database permissions.",
+            }
+        )
+    except Exception as error:
+        checks.append(
+            {
+                "name": "database",
+                "ok": False,
+                "detail": str(error),
+                "fix": "Check database.url and network access.",
+            }
+        )
+
+    try:
+        entities = list_entities(config.database.url, limit=100)
+        checks.append(
+            {
+                "name": "knowledge",
+                "ok": True,
+                "detail": {
+                    "entities": len(entities),
+                    "claims": sum(entity.claim_count for entity in entities),
+                    "events": sum(entity.event_count for entity in entities),
+                },
+                "fix": None,
+            }
+        )
+    except Exception as error:
+        checks.append(
+            {
+                "name": "knowledge",
+                "ok": False,
+                "detail": str(error),
+                "fix": "Fix database before reading knowledge.",
+            }
+        )
+
+    ok = all(bool(check["ok"]) for check in checks)
+    return _print_doctor(args, checks, ok=ok)
+
+
+def handle_add_text(args: argparse.Namespace) -> int:
+    try:
+        config = load_config(args.config)
+        text = _read_add_text(args)
+        source_type = "markdown" if args.add_command == "markdown" else "text"
+        solo_decision = None
+        llm_provider = None
+        if args.dry_run and not args.solo:
+            raise ValueError("--dry-run requires --solo")
+        if not args.title:
+            llm_provider = build_llm_provider(config.models)
+        title = _add_title(args, text, llm_provider)
+        if args.solo:
+            if args.file is None:
+                raise ValueError("--solo requires --file input")
+            llm_provider = llm_provider or build_llm_provider(config.models)
+            solo_decision = judge_solo_add_file(
+                title=title,
+                file_path=args.file,
+                text=text,
+                provider=llm_provider,
+            )
+            record_solo_add_decision(
+                config.database.url,
+                title=title,
+                file_path=args.file,
+                decision=solo_decision,
+                dry_run=args.dry_run,
+            )
+            if args.dry_run or not solo_decision.should_ingest:
+                payload = {
+                    "source_id": None,
+                    "chunk_count": 0,
+                    "chunks_embedded": None,
+                    "entities_created": None,
+                    "claims_created": None,
+                    "events_created": None,
+                    "skipped": not solo_decision.should_ingest,
+                    "dry_run": args.dry_run,
+                    "title": title,
+                    "source_path": _source_path(args.file),
+                    "solo_decision": asdict(solo_decision),
+                }
+                if args.json:
+                    print(json.dumps(payload, ensure_ascii=False))
+                elif args.dry_run:
+                    print(
+                        "Solo would "
+                        f"{'add' if solo_decision.should_ingest else 'skip'}: "
+                        f"{solo_decision.reason} "
+                        f"(confidence={solo_decision.confidence:.2f})"
+                    )
+                else:
+                    print(
+                        "Solo skipped: "
+                        f"{solo_decision.reason} "
+                        f"(confidence={solo_decision.confidence:.2f})"
+                    )
+                return 0
+
+        ingest_result = ingest_text_source(
+            config.database.url,
+            title=title,
+            text=text,
+            source_type=source_type,
+            source_path=_source_path(args.file),
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+        )
+        payload = {
+            "source_id": ingest_result.source_id,
+            "chunk_count": ingest_result.chunk_count,
+            "chunks_embedded": None,
+            "entities_created": None,
+            "claims_created": None,
+            "events_created": None,
+            "skipped": False,
+            "solo_decision": asdict(solo_decision) if solo_decision else None,
+        }
+        if not args.json:
+            if solo_decision is not None:
+                print(
+                    "Solo accepted: "
+                    f"{solo_decision.reason} "
+                    f"(confidence={solo_decision.confidence:.2f})"
+                )
+            print(
+                f"Added source {ingest_result.source_id} "
+                f"with {ingest_result.chunk_count} chunks."
+            )
+
+        if not args.skip_embed:
+            embedding_provider = build_embedding_provider(config.models)
+            embed_result = embed_source_chunks(
+                config.database.url,
+                source_id=ingest_result.source_id,
+                model_config=config.models,
+                provider=embedding_provider,
+            )
+            embedded = 0 if embed_result is None else embed_result.chunks_embedded
+            payload["chunks_embedded"] = embedded
+            if not args.json:
+                print(f"Embedded {embedded} chunks.")
+
+        if not args.skip_extract:
+            llm_provider = llm_provider or build_llm_provider(config.models)
+            extract_result = extract_llm_source(
+                config.database.url,
+                ingest_result.source_id,
+                llm_provider,
+            )
+            if extract_result is None:
+                print("Extraction skipped: source not found.", file=sys.stderr)
+                return 1
+            payload["entities_created"] = extract_result.entities_created
+            payload["claims_created"] = extract_result.claims_created
+            payload["events_created"] = extract_result.events_created
+            if not args.json:
+                print(
+                    "Extracted "
+                    f"{extract_result.entities_created} entities, "
+                    f"{extract_result.claims_created} claims, "
+                    f"{extract_result.events_created} events."
+                )
+    except ValueError as error:
+        print(f"Add error: {error}", file=sys.stderr)
+        return 2
+    except FileNotFoundError as error:
+        print(f"Add error: file not found: {error.filename}", file=sys.stderr)
+        return 2
+    except Exception as error:
+        print(f"Add failed: {error}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _read_add_text(args: argparse.Namespace) -> str:
+    if args.file is not None:
+        return args.file.read_text(encoding="utf-8")
+    if args.text is not None:
+        return args.text
+    if args.stdin:
+        return sys.stdin.read()
+    raise ValueError("No text input provided.")
+
+
+def _add_title(args: argparse.Namespace, text: str, llm_provider) -> str:
+    if args.title:
+        return args.title
+    if llm_provider is None:
+        raise ValueError("LLM provider is required when --title is omitted")
+    return llm_provider.suggest_source_title(
+        source_path=_source_path(args.file),
+        text_preview=text.strip()[:12000],
+    )
+
+
+def _source_path(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    return str(path.expanduser().resolve())
+
+
+def handle_ask(args: argparse.Namespace) -> int:
+    question = " ".join(args.question).strip()
+    try:
+        config = load_config(args.config)
+        embedding_provider = build_embedding_provider(config.models)
+        llm_provider = build_llm_provider(config.models)
+        result = answer_question(
+            config.database.url,
+            question=question,
+            model_config=config.models,
+            embedding_provider=embedding_provider,
+            llm_provider=llm_provider,
+        )
+    except ValueError as error:
+        print(f"Ask error: {error}", file=sys.stderr)
+        return 2
+    except Exception as error:
+        print(f"Ask failed: {error}", file=sys.stderr)
+        return 1
+
+    return _print_ask_result(args, result)
+
+
 def handle_ingest_text(args: argparse.Namespace) -> int:
     try:
         config = load_config(args.config)
@@ -412,6 +1100,7 @@ def handle_ingest_text(args: argparse.Namespace) -> int:
             config.database.url,
             title=args.title,
             text=text,
+            source_path=_source_path(args.file),
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap,
         )
@@ -584,7 +1273,14 @@ def handle_entities_list(args: argparse.Namespace) -> int:
         return 1
 
     if not entities:
+        if args.json:
+            print(json.dumps([], ensure_ascii=False))
+            return 0
         print("No entities found.")
+        return 0
+
+    if args.json:
+        print(json.dumps([asdict(entity) for entity in entities], ensure_ascii=False))
         return 0
 
     print("id\ttype\tstatus\tclaims\tevents\tname")
@@ -607,6 +1303,10 @@ def handle_entity_show(args: argparse.Namespace) -> int:
     if entity is None:
         print(f"Entity not found: {args.identifier}", file=sys.stderr)
         return 2
+
+    if args.json:
+        print(json.dumps(asdict(entity), ensure_ascii=False))
+        return 0
 
     print(f"id: {entity.id}")
     print(f"name: {entity.name}")
@@ -850,6 +1550,61 @@ def _print_relations(title: str, relations) -> None:
             f"{relation.object_type}:{relation.object_id} "
             f"conf={relation.confidence}"
         )
+
+
+def _print_ask_result(args: argparse.Namespace, result: AskResult) -> int:
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "question": result.question,
+                    "answer": result.answer,
+                    "evidence": [asdict(item) for item in result.evidence],
+                    "followups": result.followups,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    print(result.answer)
+    if result.evidence:
+        print("")
+        print("evidence")
+        for item in result.evidence:
+            print(
+                f"  - source:{item.source_id} chunk:{item.chunk_id} "
+                f"score={item.score:.3f} {item.title}: {_preview_text(item.text, 90)}"
+            )
+    if result.followups:
+        print("")
+        print("followups")
+        for item in result.followups:
+            print(f"  - {item}")
+    return 0
+
+
+def _print_doctor(
+    args: argparse.Namespace,
+    checks: list[dict[str, object]],
+    *,
+    ok: bool,
+) -> int:
+    if args.json:
+        print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False))
+        return 0 if ok else 1
+
+    print(f"gmind doctor: {'ok' if ok else 'needs attention'}")
+    for check in checks:
+        marker = "ok" if check["ok"] else "fail"
+        print(f"- {check['name']}: {marker}")
+        detail = check.get("detail")
+        if detail:
+            print(f"  detail: {detail}")
+        fix = check.get("fix")
+        if fix:
+            print(f"  fix: {fix}")
+    return 0 if ok else 1
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

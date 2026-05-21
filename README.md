@@ -2,11 +2,26 @@
 
 gmind is a proactive personal AI knowledge base.
 
-It ingests sources, extracts entities, claims, events, relations, and tasks, then keeps knowledge current through structured queries and active follow-up work.
+The product shape is now:
+
+```text
+macOS menu bar app for humans
+CLI for agents and automation
+```
+
+Humans ask questions in the App. Agents use the CLI to add material, ask the
+knowledge base, check readiness, and diagnose setup.
 
 gmind 是一个主动吸取知识的个人 AI 知识库。
 
-它会吸取资料，抽取实体、断言、事件、关系和任务，并通过结构化查询与主动任务持续更新理解。
+现在的产品形态是：
+
+```text
+macOS 菜单栏 App 给普通人使用
+CLI 给智能体和自动化调用
+```
+
+人类在 App 里提问；智能体用 CLI 添加资料、提问、检查状态和诊断环境。
 
 ## Model configuration
 
@@ -42,34 +57,36 @@ llm_model = "deepseek-ai/DeepSeek-V4-Flash"
 
 ## Current status / 当前进度
 
-The current implementation is a working CLI-first knowledge engine prototype.
+The current implementation includes a macOS menu bar app and a bundled CLI.
 
-当前版本已经是一个可运行的 CLI 优先知识引擎原型。
+当前版本已经包含 macOS 菜单栏 App 和随 App 打包的 CLI。
 
 Implemented:
 
 ```text
+macOS menu bar app
+bundled CLI inside the .app
+automatic CLI registration at ~/.local/bin/gmind
 config initialization
 Postgres + pgvector schema initialization
 database readiness checks
-plain text ingest
-source chunk embedding
-stub extraction
-LLM extraction with SiliconFlow
-source/entity/claim/event/relation/task/log inspection
+add text files through one product command
+ask existing knowledge through vector search + LLM synthesis
+debug namespace for pipeline/database inspection
 ```
 
 已实现：
 
 ```text
+macOS 菜单栏 App
+App 内置 CLI
+自动注册 ~/.local/bin/gmind
 配置初始化
 Postgres + pgvector schema 初始化
 数据库可用性检查
-纯文本 ingest
-source chunk 向量化
-规则版抽取
-硅基流动 LLM 抽取
-source / entity / claim / event / relation / task / log 查询
+通过一个产品命令添加文本资料
+通过向量搜索 + LLM 综合回答询问已有知识
+debug 命名空间用于管线和数据库调试
 ```
 
 Verified against remote `gmind_dev`:
@@ -92,28 +109,76 @@ entity show -> claims/events/relations 读回
 
 ## CLI quickstart / CLI 快速开始
 
+The CLI is intentionally small at the product layer:
+
+```bash
+gmind setup
+gmind status --config gmind.toml
+gmind add text --title "Project note" --file note.txt --config gmind.toml
+gmind add markdown --title "Meeting notes" --file meeting.md --config gmind.toml
+gmind add text --title "Quick note" --text "Project A signed the contract." --config gmind.toml
+gmind ask "项目 A 当前进展如何？" --config gmind.toml
+gmind doctor --config gmind.toml
+```
+
+产品层 CLI 故意保持很小：
+
+```bash
+gmind setup
+gmind status --config gmind.toml
+gmind add text --title "测试资料" --file note.txt --config gmind.toml
+gmind add markdown --title "会议纪要" --file meeting.md --config gmind.toml
+gmind add text --title "快速记录" --text "项目 A 已签署合同。" --config gmind.toml
+gmind ask "项目 A 当前进展如何？" --config gmind.toml
+gmind doctor --config gmind.toml
+```
+
+During local development, prefix commands with `uv run`:
+
 ```bash
 uv sync --dev
-uv run gmind init
-uv run gmind db check --config gmind.toml
-uv run gmind ingest text --title "Project note" --file note.txt --config gmind.toml
-uv run gmind embed source 1 --config gmind.toml
-uv run gmind extract llm 1 --config gmind.toml
-uv run gmind entity show "项目 A" --config gmind.toml
+uv run gmind setup
+uv run gmind status --config gmind.toml
+uv run gmind add text --title "Project note" --file note.txt --config gmind.toml
+uv run gmind add markdown --title "Meeting notes" --file meeting.md --config gmind.toml
+uv run gmind add text --title "Quick note" --text "Project A signed the contract." --config gmind.toml
+uv run gmind ask "项目 A 当前进展如何？" --config gmind.toml
 ```
 
-Useful inspection commands:
+`gmind add text` and `gmind add markdown` both accept exactly one input source:
 
 ```bash
-uv run gmind sources --config gmind.toml
-uv run gmind source show 1 --config gmind.toml
-uv run gmind entities --config gmind.toml
-uv run gmind claims --entity "项目 A" --config gmind.toml
-uv run gmind events timeline --entity "项目 A" --config gmind.toml
-uv run gmind relations for claim 1 --config gmind.toml
-uv run gmind tasks --config gmind.toml
-uv run gmind logs --config gmind.toml
+gmind add text --title "From file" --file note.txt --config gmind.toml
+gmind add text --title "Direct text" --text "项目 A 已签署合同。" --config gmind.toml
+echo "项目 A 收到首付款。" | gmind add text --title "From stdin" --stdin --config gmind.toml
+gmind add markdown --title "Markdown file" --file note.md --config gmind.toml
+gmind add markdown --title "Markdown text" --text "## 项目 A\n\n已签署合同。" --config gmind.toml
 ```
+
+`gmind ask` embeds the question, searches similar source chunks with pgvector,
+and asks the configured LLM to synthesize an answer from those evidence chunks.
+Use `--json` when an agent or the App needs structured output:
+
+```bash
+gmind ask "项目 A 当前进展如何？" --json --config gmind.toml
+```
+
+Debug commands remain available for development and operator inspection, but
+they are not the product surface:
+
+```bash
+uv run gmind debug db check --config gmind.toml
+uv run gmind debug entities --config gmind.toml
+uv run gmind debug entity show "项目 A" --config gmind.toml
+uv run gmind debug pipeline embed-source 1 --config gmind.toml
+uv run gmind debug pipeline extract-llm 1 --config gmind.toml
+uv run gmind debug logs --config gmind.toml
+```
+
+The old low-level commands such as `entities`, `claims`, `events`, `relations`,
+`ingest`, `embed`, and `extract` are kept for compatibility, but they are hidden
+from the main help output. New agent code should use `add`, `ask`, `status`, and
+`debug`.
 
 ## Next steps / 下一步
 

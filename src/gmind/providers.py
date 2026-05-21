@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 import hashlib
 import json
 import os
+import subprocess
+import sys
 from typing import Any
 
 from gmind.config import ModelConfig
@@ -128,6 +130,29 @@ class LLMProvider(ABC):
     def extract_chunk(self, chunk_text: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    @abstractmethod
+    def answer_question(self, question: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def judge_source_for_ingest(
+        self,
+        *,
+        title: str,
+        source_path: str,
+        text_preview: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def suggest_source_title(
+        self,
+        *,
+        source_path: str | None,
+        text_preview: str,
+    ) -> str:
+        raise NotImplementedError
+
 
 class FakeEmbeddingProvider(EmbeddingProvider):
     def __init__(self, dimensions: int) -> None:
@@ -151,6 +176,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self.client = OpenAI(
             api_key=_api_key(api_key_env),
             base_url=base_url,
+            timeout=60,
         )
         self.model = model
         self.dimensions = dimensions
@@ -168,6 +194,46 @@ class FakeLLMProvider(LLMProvider):
     def extract_chunk(self, chunk_text: str) -> dict[str, Any]:
         return {"entities": [], "claims": [], "events": [], "tasks": []}
 
+    def answer_question(self, question: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+        if not evidence:
+            return {"answer": "还没有找到相关资料。", "followups": []}
+        first = evidence[0]["text"]
+        return {
+            "answer": f"基于已有资料：{first}",
+            "followups": [],
+        }
+
+    def judge_source_for_ingest(
+        self,
+        *,
+        title: str,
+        source_path: str,
+        text_preview: str,
+    ) -> dict[str, Any]:
+        if "skip" in title.lower() or "跳过" in text_preview:
+            return {
+                "should_ingest": False,
+                "reason": "Fake provider judged this file should be skipped.",
+                "confidence": 0.8,
+            }
+        return {
+            "should_ingest": True,
+            "reason": "Fake provider judged this file has useful knowledge.",
+            "confidence": 0.8,
+        }
+
+    def suggest_source_title(
+        self,
+        *,
+        source_path: str | None,
+        text_preview: str,
+    ) -> str:
+        first_line = next(
+            (line.strip("# \t") for line in text_preview.splitlines() if line.strip()),
+            "",
+        )
+        return _normalize_title(first_line or "Untitled")
+
 
 class OpenAILLMProvider(LLMProvider):
     def __init__(
@@ -182,6 +248,7 @@ class OpenAILLMProvider(LLMProvider):
         self.client = OpenAI(
             api_key=_api_key(api_key_env),
             base_url=base_url,
+            timeout=60,
         )
         self.model = model
 
@@ -235,6 +302,115 @@ class OpenAILLMProvider(LLMProvider):
             raise ValueError("LLM returned empty extraction content")
         return _normalize_extraction(json.loads(content))
 
+    def answer_question(self, question: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+        evidence_text = "\n\n".join(
+            (
+                f"[{index + 1}] source_id={item.get('source_id')} "
+                f"chunk_id={item.get('chunk_id')} title={item.get('title')}\n"
+                f"{item.get('text')}"
+            )
+            for index, item in enumerate(evidence)
+        )
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You answer questions for gmind using only the provided evidence. "
+                        "Do not invent facts. If the evidence is insufficient, say what is missing. "
+                        "Return JSON with keys: answer, followups. followups is an array of short strings."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Question:\n{question}\n\n"
+                        f"Evidence:\n{evidence_text}\n\n"
+                        "Return only JSON."
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = completion.choices[0].message.content
+        if content is None:
+            raise ValueError("LLM returned empty answer content")
+        return _normalize_answer(json.loads(content))
+
+    def judge_source_for_ingest(
+        self,
+        *,
+        title: str,
+        source_path: str,
+        text_preview: str,
+    ) -> dict[str, Any]:
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你负责判断一个文件是否应当加入 gmind（个人 AI 知识库）。"
+                        "应当入库的文件包含持久、可复用的知识：项目事实、会议纪要、"
+                        "调研资料、决策记录、需求文档、计划方案、总结归纳或领域素材。"
+                        "应当跳过的文件包括：空文件、模板/样板文本、依赖文档、凭据/密钥、"
+                        "日志、临时便签，或未来几乎不会被检索的内容。"
+                        "返回 JSON，包含以下键：should_ingest（布尔值，是否入库）、"
+                        "reason（简短中文理由）、confidence（0 到 1 之间的置信度）。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"标题：{title}\n"
+                        f"路径：{source_path}\n\n"
+                        f"文件预览：\n{text_preview}\n\n"
+                        "只返回 JSON。"
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = completion.choices[0].message.content
+        if content is None:
+            raise ValueError("LLM returned empty solo decision content")
+        return _normalize_solo_decision(json.loads(content))
+
+    def suggest_source_title(
+        self,
+        *,
+        source_path: str | None,
+        text_preview: str,
+    ) -> str:
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You generate concise titles for material added to gmind. "
+                        "Return JSON with one key: title. The title should be short, "
+                        "specific, human-readable, and no more than 24 Chinese "
+                        "characters or 8 English words. Do not include quotes."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Path: {source_path or '-'}\n\n"
+                        f"File/text preview:\n{text_preview}\n\n"
+                        "Return only JSON."
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = completion.choices[0].message.content
+        if content is None:
+            raise ValueError("LLM returned empty title content")
+        return _normalize_title(json.loads(content).get("title", ""))
+
 
 class SiliconFlowEmbeddingProvider(OpenAIEmbeddingProvider):
     pass
@@ -284,9 +460,36 @@ def build_llm_provider(config: ModelConfig) -> LLMProvider:
 
 def _api_key(env_name: str) -> str:
     api_key = os.getenv(env_name)
-    if not api_key:
-        raise ValueError(f"Missing API key environment variable: {env_name}")
-    return api_key
+    if api_key:
+        return api_key
+    if sys.platform == "darwin":
+        keychain_key = _read_keychain(service="gmind", account=env_name)
+        if keychain_key:
+            return keychain_key
+    raise ValueError(f"Missing API key environment variable: {env_name}")
+
+
+def _read_keychain(service: str, account: str) -> str | None:
+    try:
+        result = subprocess.run(
+            [
+                "security",
+                "find-generic-password",
+                "-s",
+                service,
+                "-a",
+                account,
+                "-w",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def _extraction_system_prompt() -> str:
@@ -367,6 +570,36 @@ def _normalize_extraction(data: dict[str, Any]) -> dict[str, Any]:
             if task.get("title")
         ],
     }
+
+
+def _normalize_answer(data: dict[str, Any]) -> dict[str, Any]:
+    answer = str(data.get("answer", "")).strip()
+    followups = data.get("followups", [])
+    if not isinstance(followups, list):
+        followups = []
+    return {
+        "answer": answer or "没有足够资料回答这个问题。",
+        "followups": [str(item).strip() for item in followups if str(item).strip()],
+    }
+
+
+def _normalize_solo_decision(data: dict[str, Any]) -> dict[str, Any]:
+    reason = str(data.get("reason", "")).strip()
+    confidence = data.get("confidence", 0.5)
+    try:
+        confidence_value = float(confidence)
+    except (TypeError, ValueError):
+        confidence_value = 0.5
+    return {
+        "should_ingest": bool(data.get("should_ingest", False)),
+        "reason": reason or "模型没有给出明确原因。",
+        "confidence": max(0.0, min(1.0, confidence_value)),
+    }
+
+
+def _normalize_title(title: object) -> str:
+    normalized = " ".join(str(title).strip().strip("\"'").split())
+    return normalized[:80] or "untitled"
 
 
 def _normalize_name(name: str) -> str:

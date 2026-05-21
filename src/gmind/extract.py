@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 import re
 from typing import Any
 
@@ -183,8 +184,8 @@ def extract_llm_source(
                 relations_created=0,
             )
 
-            for chunk in chunks:
-                extraction = provider.extract_chunk(chunk.chunk_text)
+            extractions = _extract_all_chunks(chunks, provider)
+            for chunk, extraction in zip(chunks, extractions, strict=True):
                 chunk_result = _write_llm_extraction(
                     cursor,
                     source_id=source_id,
@@ -218,6 +219,37 @@ def extract_llm_source(
             )
 
     return totals
+
+
+def _extract_all_chunks(
+    chunks: list[ChunkRow],
+    provider: LLMProvider,
+    max_workers: int = 5,
+) -> list[dict[str, Any]]:
+    if not chunks:
+        return []
+    workers = min(max_workers, len(chunks))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        return list(executor.map(lambda c: provider.extract_chunk(c.chunk_text), chunks))
+
+
+def _safe_parse_date(value: object) -> date | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            if fmt == "%Y":
+                return date(parsed.year, 1, 1)
+            if fmt == "%Y-%m":
+                return date(parsed.year, parsed.month, 1)
+            return date(parsed.year, parsed.month, parsed.day)
+        except ValueError:
+            continue
+    return None
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -502,7 +534,7 @@ def _get_or_create_llm_event(
     if row is not None:
         return row[0], False
 
-    occurred_at = event.get("occurred_at") or None
+    occurred_at = _safe_parse_date(event.get("occurred_at"))
     cursor.execute(
         """
         insert into events (

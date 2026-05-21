@@ -1,12 +1,18 @@
+from unittest.mock import patch
+
 from gmind.config import ModelConfig
 from gmind.providers import (
     FakeEmbeddingProvider,
     FakeLLMProvider,
     SiliconFlowEmbeddingProvider,
     SiliconFlowLLMProvider,
+    _api_key,
+    _read_keychain,
     build_embedding_provider,
     build_llm_provider,
     _normalize_extraction,
+    _normalize_solo_decision,
+    _normalize_title,
 )
 
 
@@ -34,6 +40,17 @@ def test_build_fake_providers() -> None:
 
     assert isinstance(build_embedding_provider(config), FakeEmbeddingProvider)
     assert isinstance(build_llm_provider(config), FakeLLMProvider)
+
+
+def test_fake_llm_suggests_title_from_text_preview() -> None:
+    provider = FakeLLMProvider()
+
+    title = provider.suggest_source_title(
+        source_path=None,
+        text_preview="# 项目 A 合同\n\n项目 A 已签署合同。",
+    )
+
+    assert title == "项目 A 合同"
 
 
 def test_build_siliconflow_providers(monkeypatch) -> None:
@@ -85,3 +102,61 @@ def test_normalize_extraction_coerces_priority_and_names() -> None:
     assert normalized["claims"][0]["claim_type"] == "fact"
     assert normalized["claims"][0]["about_entities"] == ["项目 B"]
     assert normalized["tasks"][0]["priority"] == 80
+
+
+def test_normalize_solo_decision_clamps_confidence() -> None:
+    normalized = _normalize_solo_decision(
+        {
+            "should_ingest": True,
+            "reason": "包含项目事实。",
+            "confidence": 1.4,
+        }
+    )
+
+    assert normalized["should_ingest"] is True
+    assert normalized["reason"] == "包含项目事实。"
+    assert normalized["confidence"] == 1.0
+
+
+def test_normalize_title_strips_quotes_and_collapses_spaces() -> None:
+    assert _normalize_title('  "项目   A   合同"  ') == "项目 A 合同"
+
+
+def test_api_key_prefers_env_variable(monkeypatch) -> None:
+    monkeypatch.setenv("TEST_API_KEY", "env-key")
+    assert _api_key("TEST_API_KEY") == "env-key"
+
+
+def test_api_key_raises_when_missing() -> None:
+    import sys
+
+    with patch.object(sys, "platform", "linux"):
+        with patch.dict("os.environ", {}, clear=True):
+            with patch(
+                "gmind.providers._read_keychain", return_value=None
+            ) as mock_keychain:
+                try:
+                    _api_key("MISSING_KEY")
+                except ValueError as e:
+                    assert "MISSING_KEY" in str(e)
+                mock_keychain.assert_not_called()
+
+
+def test_api_key_falls_back_to_keychain_on_macos(monkeypatch) -> None:
+    import sys
+
+    monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
+    with patch.object(sys, "platform", "darwin"):
+        with patch(
+            "gmind.providers._read_keychain", return_value="keychain-key"
+        ) as mock_keychain:
+            key = _api_key("SILICONFLOW_API_KEY")
+            assert key == "keychain-key"
+            mock_keychain.assert_called_once_with(
+                service="gmind", account="SILICONFLOW_API_KEY"
+            )
+
+
+def test_read_keychain_returns_none_on_failure() -> None:
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        assert _read_keychain("gmind", "TEST_KEY") is None

@@ -1,6 +1,6 @@
 from datetime import date
 
-from gmind.extract import _event_candidate, _find_project, _split_sentences
+from gmind.extract import _event_candidate, _find_project, _safe_parse_date, _split_sentences
 
 
 def test_find_project_normalizes_spaces() -> None:
@@ -30,3 +30,12 @@ def test_split_sentences_handles_chinese_periods() -> None:
         "项目 A 签署合同。",
         "项目 A 收到首付款。",
     ]
+
+
+def test_safe_parse_date_parses_various_formats() -> None:
+    assert _safe_parse_date("2024-04-16") == date(2024, 4, 16)
+    assert _safe_parse_date("2024-04") == date(2024, 4, 1)
+    assert _safe_parse_date("2024") == date(2024, 1, 1)
+    assert _safe_parse_date(None) is None
+    assert _safe_parse_date("") is None
+    assert _safe_parse_date("invalid") is None

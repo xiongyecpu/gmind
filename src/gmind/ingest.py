@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 
 DEFAULT_CHUNK_SIZE = 1200
@@ -54,22 +55,32 @@ def ingest_text_source(
     title: str,
     text: str,
     source_type: str = "text",
+    source_path: str | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
 ) -> IngestResult:
     chunks = split_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if not chunks:
         raise ValueError("Cannot ingest empty text")
+    metadata = {}
+    if source_path is not None:
+        metadata["source_path"] = source_path
 
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                insert into sources (title, source_type, raw_text, captured_at)
-                values (%s, %s, %s, now())
+                insert into sources (
+                    title,
+                    source_type,
+                    raw_text,
+                    captured_at,
+                    metadata_json
+                )
+                values (%s, %s, %s, now(), %s)
                 returning id
                 """,
-                (title, source_type, text),
+                (title, source_type, text, Jsonb(metadata)),
             )
             source_id = cursor.fetchone()[0]
 
@@ -106,14 +117,14 @@ def ingest_text_source(
                     'gmind',
                     'source',
                     %s,
-                    jsonb_build_object('chunk_count', %s)
+                    %s
                 )
                 """,
                 (
                     f"Ingested source: {title}",
                     f"Created {len(chunks)} source chunks.",
                     source_id,
-                    len(chunks),
+                    Jsonb({"chunk_count": len(chunks), **metadata}),
                 ),
             )
 

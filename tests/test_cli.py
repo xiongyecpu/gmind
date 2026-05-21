@@ -1,6 +1,9 @@
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from gmind.ask import AskResult, EvidenceChunk
 from gmind.cli import main
 from gmind.config import init_config
 from gmind.db import DatabaseCheck, REQUIRED_TABLES, REQUIRED_VIEWS
@@ -17,6 +20,676 @@ from gmind.knowledge import (
     TaskSummary,
 )
 from gmind.sources import SourceChunk, SourceDetail, SourceSummary
+
+
+def test_help_shows_product_commands_not_database_views(capsys) -> None:
+    try:
+        main(["--help"])
+    except SystemExit as exit:
+        assert exit.code == 0
+
+    captured = capsys.readouterr()
+    assert "ask" in captured.out
+    assert "add" in captured.out
+    assert "status" in captured.out
+    assert "debug" in captured.out
+    assert "entities" not in captured.out
+    assert "relations" not in captured.out
+
+
+def test_add_text_runs_ingest_embed_and_extract(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "source.txt"
+    init_config(config_path)
+    source_path.write_text("项目 A 在 2026-03-01 签署合同。", encoding="utf-8")
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=7, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=7,
+            entities_created=1,
+            claims_created=1,
+            events_created=1,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "测试资料",
+                "--file",
+                str(source_path),
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 7" in captured.out
+    assert "Embedded 1 chunks." in captured.out
+    assert "Extracted 1 entities" in captured.out
+    ingest_text_source.assert_called_once()
+    assert ingest_text_source.call_args.kwargs["source_path"] == str(
+        source_path.resolve()
+    )
+    embed_source_chunks.assert_called_once()
+    extract_llm_source.assert_called_once()
+
+
+def test_add_text_accepts_direct_text(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=8, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=8,
+            entities_created=1,
+            claims_created=1,
+            events_created=0,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "直接文本",
+                "--text",
+                "项目 B 收到首付款。",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 8" in captured.out
+    assert ingest_text_source.call_args.kwargs["text"] == "项目 B 收到首付款。"
+    embed_source_chunks.assert_called_once()
+    extract_llm_source.assert_called_once()
+
+
+def test_add_text_file_uses_llm_title_when_title_is_omitted(
+    tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "project-note.txt"
+    init_config(config_path)
+    source_path.write_text("项目 A 在 2026-03-01 签署合同。", encoding="utf-8")
+    provider = SimpleNamespace(suggest_source_title=lambda **_: "项目 A 合同")
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider", return_value=provider),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=13, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=13,
+            entities_created=1,
+            claims_created=1,
+            events_created=1,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--file",
+                str(source_path),
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 13" in captured.out
+    assert ingest_text_source.call_args.kwargs["title"] == "项目 A 合同"
+
+
+def test_add_text_direct_text_uses_llm_title_when_title_is_omitted(
+    tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    provider = SimpleNamespace(suggest_source_title=lambda **_: "项目 A 签约")
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider", return_value=provider),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=14, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=14,
+            entities_created=1,
+            claims_created=1,
+            events_created=1,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--text",
+                "项目 A 已签署合同。",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 14" in captured.out
+    assert ingest_text_source.call_args.kwargs["title"] == "项目 A 签约"
+
+
+def test_add_text_accepts_stdin(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(read=lambda: "项目 C 签署合同。"))
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=9, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=9,
+            entities_created=1,
+            claims_created=1,
+            events_created=1,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "stdin 文本",
+                "--stdin",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 9" in captured.out
+    assert ingest_text_source.call_args.kwargs["text"] == "项目 C 签署合同。"
+    embed_source_chunks.assert_called_once()
+    extract_llm_source.assert_called_once()
+
+
+def test_add_text_stdin_uses_llm_title_when_title_is_omitted(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(read=lambda: "\n\n项目 C 签署合同。"))
+    provider = SimpleNamespace(suggest_source_title=lambda **_: "项目 C 签约")
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider", return_value=provider),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=15, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=15,
+            entities_created=1,
+            claims_created=1,
+            events_created=1,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--stdin",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 15" in captured.out
+    assert ingest_text_source.call_args.kwargs["title"] == "项目 C 签约"
+
+
+def test_add_text_can_print_json(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=10, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=10,
+            entities_created=1,
+            claims_created=2,
+            events_created=0,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "json 文本",
+                "--text",
+                "项目 D 完成验收。",
+                "--json",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"source_id": 10' in captured.out
+    assert '"claims_created": 2' in captured.out
+
+
+def test_add_markdown_uses_markdown_source_type(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "source.md"
+    init_config(config_path)
+    source_path.write_text("# 项目 A\n\n已签署合同。", encoding="utf-8")
+
+    with (
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=11, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=11,
+            entities_created=1,
+            claims_created=1,
+            events_created=0,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "markdown",
+                "--title",
+                "Markdown 资料",
+                "--file",
+                str(source_path),
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Added source 11" in captured.out
+    assert ingest_text_source.call_args.kwargs["text"] == "# 项目 A\n\n已签署合同。"
+    assert ingest_text_source.call_args.kwargs["source_type"] == "markdown"
+    assert ingest_text_source.call_args.kwargs["source_path"] == str(
+        source_path.resolve()
+    )
+    embed_source_chunks.assert_called_once()
+    extract_llm_source.assert_called_once()
+
+
+def test_add_text_solo_skips_when_llm_rejects_file(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "source.txt"
+    init_config(config_path)
+    source_path.write_text("临时草稿，不需要进入知识库。", encoding="utf-8")
+    provider = SimpleNamespace(
+        judge_source_for_ingest=lambda **_: {
+            "should_ingest": False,
+            "reason": "这是临时草稿。",
+            "confidence": 0.91,
+        }
+    )
+
+    with (
+        patch("gmind.cli.build_llm_provider", return_value=provider),
+        patch("gmind.cli.record_solo_add_decision") as record_solo_add_decision,
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+    ):
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "临时草稿",
+                "--file",
+                str(source_path),
+                "--solo",
+                "--json",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"skipped": true' in captured.out
+    assert '"reason": "这是临时草稿。"' in captured.out
+    record_solo_add_decision.assert_called_once()
+    assert record_solo_add_decision.call_args.kwargs["file_path"] == source_path
+    ingest_text_source.assert_not_called()
+
+
+def test_add_text_solo_imports_when_llm_accepts_file(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "source.txt"
+    init_config(config_path)
+    source_path.write_text("项目 A 在 2026-03-01 签署合同。", encoding="utf-8")
+    provider = SimpleNamespace(
+        judge_source_for_ingest=lambda **_: {
+            "should_ingest": True,
+            "reason": "包含项目事实。",
+            "confidence": 0.88,
+        }
+    )
+
+    with (
+        patch("gmind.cli.build_llm_provider", return_value=provider),
+        patch("gmind.cli.record_solo_add_decision") as record_solo_add_decision,
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        ingest_text_source.return_value = SimpleNamespace(source_id=12, chunk_count=1)
+        embed_source_chunks.return_value = SimpleNamespace(chunks_embedded=1)
+        extract_llm_source.return_value = ExtractResult(
+            source_id=12,
+            entities_created=1,
+            claims_created=1,
+            events_created=1,
+            relations_created=1,
+        )
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "项目资料",
+                "--file",
+                str(source_path),
+                "--solo",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Solo accepted: 包含项目事实。" in captured.out
+    assert "Added source 12" in captured.out
+    record_solo_add_decision.assert_called_once()
+    assert record_solo_add_decision.call_args.kwargs["file_path"] == source_path
+    ingest_text_source.assert_called_once()
+    extract_llm_source.assert_called_once()
+
+
+def test_add_text_solo_dry_run_returns_decision_without_import(
+    tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "source.txt"
+    init_config(config_path)
+    source_path.write_text("项目 A 在 2026-03-01 签署合同。", encoding="utf-8")
+    provider = SimpleNamespace(
+        judge_source_for_ingest=lambda **_: {
+            "should_ingest": True,
+            "reason": "包含项目事实。",
+            "confidence": 0.88,
+        }
+    )
+
+    with (
+        patch("gmind.cli.build_llm_provider", return_value=provider),
+        patch("gmind.cli.record_solo_add_decision") as record_solo_add_decision,
+        patch("gmind.cli.ingest_text_source") as ingest_text_source,
+        patch("gmind.cli.embed_source_chunks") as embed_source_chunks,
+        patch("gmind.cli.extract_llm_source") as extract_llm_source,
+    ):
+        exit_code = main(
+            [
+                "add",
+                "text",
+                "--title",
+                "项目资料",
+                "--file",
+                str(source_path),
+                "--solo",
+                "--dry-run",
+                "--json",
+                "--config",
+                str(config_path),
+            ]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["dry_run"] is True
+    assert payload["source_id"] is None
+    assert payload["skipped"] is False
+    assert payload["solo_decision"]["should_ingest"] is True
+    assert payload["solo_decision"]["reason"] == "包含项目事实。"
+    assert payload["title"] == "项目资料"
+    assert payload["source_path"] == str(source_path.resolve())
+    assert record_solo_add_decision.call_args.kwargs["dry_run"] is True
+    ingest_text_source.assert_not_called()
+    embed_source_chunks.assert_not_called()
+    extract_llm_source.assert_not_called()
+
+
+def test_add_text_dry_run_requires_solo(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    source_path = tmp_path / "source.txt"
+    init_config(config_path)
+    source_path.write_text("项目 A 在 2026-03-01 签署合同。", encoding="utf-8")
+
+    exit_code = main(
+        [
+            "add",
+            "text",
+            "--title",
+            "项目资料",
+            "--file",
+            str(source_path),
+            "--dry-run",
+            "--config",
+            str(config_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--dry-run requires --solo" in captured.err
+
+
+def test_add_text_solo_requires_file_input(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+
+    exit_code = main(
+        [
+            "add",
+            "text",
+            "--title",
+            "直接文本",
+            "--text",
+            "项目 A 已签署合同。",
+            "--solo",
+            "--config",
+            str(config_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--solo requires --file input" in captured.err
+
+
+def test_ask_prints_synthesized_answer(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    result = AskResult(
+        question="项目 A 当前进展如何？",
+        answer="项目 A 已签署合同。",
+        evidence=[
+            EvidenceChunk(
+                source_id=1,
+                chunk_id=2,
+                title="测试资料",
+                text="项目 A 在 2026-03-01 签署合同。",
+                score=0.82,
+            )
+        ],
+        followups=["确认验收状态"],
+    )
+
+    with (
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.answer_question", return_value=result),
+    ):
+        exit_code = main(["ask", "项目 A 当前进展如何？", "--config", str(config_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "项目 A 已签署合同" in captured.out
+    assert "evidence" in captured.out
+    assert "followups" in captured.out
+
+
+def test_ask_can_print_json(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    result = AskResult(
+        question="项目 A 当前进展如何？",
+        answer="项目 A 已签署合同。",
+        evidence=[
+            EvidenceChunk(
+                source_id=1,
+                chunk_id=2,
+                title="测试资料",
+                text="项目 A 在 2026-03-01 签署合同。",
+                score=0.82,
+            )
+        ],
+        followups=[],
+    )
+
+    with (
+        patch("gmind.cli.build_embedding_provider"),
+        patch("gmind.cli.build_llm_provider"),
+        patch("gmind.cli.answer_question", return_value=result),
+    ):
+        exit_code = main(
+            ["ask", "项目 A 当前进展如何？", "--json", "--config", str(config_path)]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"answer": "项目 A 已签署合同。"' in captured.out
+    assert '"score": 0.82' in captured.out
+
+
+def test_status_prints_readiness(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    check = DatabaseCheck(
+        vector_extension=True,
+        tables=REQUIRED_TABLES,
+        views=REQUIRED_VIEWS,
+    )
+    entities = [
+        EntitySummary(
+            id=1,
+            name="项目 A",
+            entity_type="project",
+            status="active",
+            claim_count=2,
+            event_count=1,
+        )
+    ]
+
+    with (
+        patch("gmind.cli.check_database", return_value=check),
+        patch("gmind.cli.list_entities", return_value=entities),
+    ):
+        exit_code = main(["status", "--config", str(config_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "gmind: ready" in captured.out
+    assert "1 knowledge points, 2 facts, 1 events" in captured.out
+
+
+def test_doctor_can_print_json(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    monkeypatch.setenv("SILICONFLOW_API_KEY", "test-key")
+    check = DatabaseCheck(
+        vector_extension=True,
+        tables=REQUIRED_TABLES,
+        views=REQUIRED_VIEWS,
+    )
+
+    with (
+        patch("gmind.cli.check_database", return_value=check),
+        patch("gmind.cli.list_entities", return_value=[]),
+    ):
+        exit_code = main(["doctor", "--json", "--config", str(config_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"ok": true' in captured.out
+    assert '"name": "api_key"' in captured.out
 
 
 def test_db_init_uses_configured_database_url(tmp_path: Path) -> None:
@@ -101,6 +774,9 @@ def test_ingest_text_uses_config_and_file(tmp_path: Path, capsys) -> None:
     ingest_text_source.assert_called_once()
     assert ingest_text_source.call_args.kwargs["title"] == "Test Source"
     assert ingest_text_source.call_args.kwargs["text"] == "hello gmind"
+    assert ingest_text_source.call_args.kwargs["source_path"] == str(
+        source_path.resolve()
+    )
 
 
 def test_ingest_text_reports_missing_file(tmp_path: Path, capsys) -> None:
@@ -288,6 +964,28 @@ def test_entities_list_prints_entities(tmp_path: Path, capsys) -> None:
     assert "项目 A" in captured.out
 
 
+def test_entities_list_can_print_json(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    entities = [
+        EntitySummary(
+            id=1,
+            name="项目 A",
+            entity_type="project",
+            status="active",
+            claim_count=2,
+            event_count=2,
+        )
+    ]
+
+    with patch("gmind.cli.list_entities", return_value=entities):
+        exit_code = main(["entities", "--json", "--config", str(config_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"name": "项目 A"' in captured.out
+
+
 def test_entity_show_prints_entity_page(tmp_path: Path, capsys) -> None:
     config_path = tmp_path / "gmind.toml"
     init_config(config_path)
@@ -319,6 +1017,41 @@ def test_entity_show_prints_entity_page(tmp_path: Path, capsys) -> None:
     assert exit_code == 0
     assert "name: 项目 A" in captured.out
     assert "项目 A 已签署合同" in captured.out
+
+
+def test_entity_show_can_print_json(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "gmind.toml"
+    init_config(config_path)
+    entity = EntityDetail(
+        id=1,
+        name="项目 A",
+        entity_type="project",
+        description=None,
+        status="active",
+        claims=[
+            ClaimSummary(
+                id=1,
+                text="项目 A 已签署合同。",
+                claim_type="fact",
+                origin="extracted",
+                status="active",
+                confidence=0.6,
+            )
+        ],
+        events=[],
+        tasks=[],
+        relations=[],
+    )
+
+    with patch("gmind.cli.get_entity", return_value=entity):
+        exit_code = main(
+            ["entity", "show", "项目 A", "--json", "--config", str(config_path)]
+        )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"claims":' in captured.out
+    assert '"text": "项目 A 已签署合同。"' in captured.out
 
 
 def test_claim_show_prints_evidence(tmp_path: Path, capsys) -> None:

@@ -7,6 +7,7 @@ import tomllib
 
 
 DEFAULT_CONFIG_PATH = Path("gmind.toml")
+USER_CONFIG_PATH = Path.home() / ".gmind" / "gmind.toml"
 
 
 @dataclass(frozen=True)
@@ -28,9 +29,16 @@ class ModelConfig:
 
 
 @dataclass(frozen=True)
+class SoloConfig:
+    enabled: bool
+    level: int
+
+
+@dataclass(frozen=True)
 class AppConfig:
     database: DatabaseConfig
     models: ModelConfig
+    solo: SoloConfig
 
 
 DEFAULT_CONFIG_TEMPLATE = """# gmind configuration
@@ -50,6 +58,10 @@ embedding_model = "Qwen/Qwen3-Embedding-4B"
 embedding_dim = 1536
 embedding_base_url = "https://api.siliconflow.cn/v1"
 embedding_api_key_env = "SILICONFLOW_API_KEY"
+
+[solo]
+enabled = false
+level = 1
 """
 
 
@@ -62,10 +74,11 @@ def init_config(path: Path = DEFAULT_CONFIG_PATH, overwrite: bool = False) -> Pa
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
-    file_data = _read_config_file(path)
+    file_data = _read_config_file(resolve_config_path(path))
 
     database_data = file_data.get("database", {})
     model_data = file_data.get("models", {})
+    solo_data = file_data.get("solo", {})
 
     database_url = os.getenv("GMIND_DATABASE_URL") or database_data.get("url")
     if not database_url:
@@ -74,6 +87,8 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
     embedding_dim = os.getenv("GMIND_EMBEDDING_DIM") or model_data.get("embedding_dim")
     if embedding_dim is None:
         raise ValueError("Missing models.embedding_dim or GMIND_EMBEDDING_DIM")
+
+    solo_level = os.getenv("GMIND_SOLO_LEVEL") or solo_data.get("level", 1)
 
     return AppConfig(
         database=DatabaseConfig(url=database_url),
@@ -96,6 +111,13 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
             embedding_api_key_env=os.getenv("GMIND_EMBEDDING_API_KEY_ENV")
             or model_data.get("embedding_api_key_env", "SILICONFLOW_API_KEY"),
         ),
+        solo=SoloConfig(
+            enabled=_bool_from_env(
+                os.getenv("GMIND_SOLO_ENABLED"),
+                default=bool(solo_data.get("enabled", False)),
+            ),
+            level=int(solo_level),
+        ),
     )
 
 
@@ -105,3 +127,33 @@ def _read_config_file(path: Path) -> dict:
 
     with path.open("rb") as config_file:
         return tomllib.load(config_file)
+
+
+def resolve_config_path(path: Path = DEFAULT_CONFIG_PATH) -> Path:
+    env_path = os.getenv("GMIND_CONFIG")
+    if env_path:
+        return Path(env_path).expanduser()
+
+    expanded = path.expanduser()
+    if expanded != DEFAULT_CONFIG_PATH:
+        return expanded
+    if expanded.exists():
+        return expanded
+
+    for parent in [Path.cwd(), *Path.cwd().parents]:
+        candidate = parent / DEFAULT_CONFIG_PATH
+        if candidate.exists():
+            return candidate
+
+    return USER_CONFIG_PATH
+
+
+def _bool_from_env(value: str | None, *, default: bool) -> bool:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value}")

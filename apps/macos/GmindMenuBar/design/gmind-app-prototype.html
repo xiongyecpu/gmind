@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gmind Minimal Japanese App Prototype</title>
+  <style>
+    /*
+      Huashu Design · Direction v4
+
+      User correction:
+      - The knowledge-toast visual direction felt childish.
+      - The app window was still too large.
+      - New direction: minimal, intelligent, Japanese-inspired.
+
+      Product scope:
+      - Menu bar app.
+      - Only Ask and Settings.
+      - No source intake, no right rail, no process diagram.
+    */
+
+    :root {
+      --bg: #f7f5ef;
+      --paper: #fffffb;
+      --wash: #f0ede4;
+      --ink: #20201d;
+      --secondary: #66645d;
+      --muted: #9a9589;
+      --line: #dfdbcf;
+      --line-strong: #c8c1b2;
+      --blue: #2563eb;
+      --green: #2f8f68;
+      --soft-blue: #eef4ff;
+      --shadow: 0 18px 56px rgba(42, 38, 30, 0.12);
+      --shadow-light: 0 8px 28px rgba(42, 38, 30, 0.08);
+      --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Hiragino Sans", sans-serif;
+      --font-mono: "SF Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(32, 32, 29, 0.035) 1px, transparent 1px),
+        linear-gradient(rgba(32, 32, 29, 0.028) 1px, transparent 1px),
+        radial-gradient(circle at 76% 16%, rgba(37, 99, 235, 0.08), transparent 300px),
+        var(--bg);
+      background-size: 32px 32px, 32px 32px, auto, auto;
+      font-family: var(--font-ui);
+      letter-spacing: 0;
+    }
+
+    .canvas {
+      width: 980px;
+      margin: 0 auto;
+      padding: 36px 36px 56px;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      align-items: end;
+      gap: 36px;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 8px 0 0;
+      font-family: var(--font-display);
+      font-size: 38px;
+      font-weight: 680;
+      line-height: 1.08;
+    }
+
+    .intro p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 250px 520px;
+      gap: 26px;
+      align-items: start;
+    }
+
+    .label {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .popover,
+    .window {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 251, 0.92);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+    }
+
+    .popover {
+      overflow: hidden;
+      border-radius: 16px;
+    }
+
+    .popover-inner {
+      padding: 14px;
+    }
+
+    .topline,
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 17px;
+      font-weight: 680;
+    }
+
+    .mark {
+      width: 20px;
+      height: 20px;
+      border: 1px solid var(--ink);
+      border-radius: 50%;
+      background:
+        linear-gradient(90deg, transparent 47%, rgba(32, 32, 29, 0.22) 47%, rgba(32, 32, 29, 0.22) 53%, transparent 53%),
+        var(--paper);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      border: 1px solid rgba(47, 143, 104, 0.24);
+      border-radius: 999px;
+      padding: 3px 9px;
+      color: #1f6f4f;
+      background: rgba(47, 143, 104, 0.09);
+      font-size: 12px;
+      font-weight: 620;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .summary {
+      margin-top: 16px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 0;
+    }
+
+    .summary small {
+      display: block;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .summary strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 20px;
+      font-weight: 680;
+      line-height: 1.25;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 9px;
+      background: rgba(247, 245, 239, 0.52);
+    }
+
+    .metric b {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 15px;
+    }
+
+    .metric span {
+      color: var(--secondary);
+      font-size: 11px;
+    }
+
+    .button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 0 12px;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .button.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: white;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+    }
+
+    .popover .button {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .popover-footer {
+      border-top: 1px solid var(--line);
+      padding: 9px 14px;
+      color: var(--secondary);
+      background: rgba(240, 237, 228, 0.56);
+      font-size: 12px;
+    }
+
+    .window {
+      overflow: hidden;
+      width: 520px;
+      border-radius: 16px;
+    }
+
+    .traffic {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 34px;
+      padding: 0 13px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(247, 245, 239, 0.58);
+    }
+
+    .traffic span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #d8d2c5;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      min-height: 338px;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(240, 237, 228, 0.48);
+      padding: 12px 7px;
+    }
+
+    .nav-title {
+      margin: 0 7px 14px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .nav-item {
+      min-height: 30px;
+      border-radius: 9px;
+      padding: 8px;
+      color: var(--secondary);
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .nav-item + .nav-item {
+      margin-top: 4px;
+    }
+
+    .nav-item.active {
+      background: var(--soft-blue);
+      color: #1745a1;
+    }
+
+    .main {
+      min-width: 0;
+    }
+
+    .topbar {
+      min-height: 48px;
+      border-bottom: 1px solid var(--line);
+      padding: 0 16px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 680;
+    }
+
+    .content {
+      padding: 14px 16px;
+    }
+
+    .composer,
+    .answer,
+    .setting-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper);
+      box-shadow: var(--shadow-light);
+    }
+
+    .composer {
+      padding: 12px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--secondary);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .question {
+      min-height: 56px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 11px;
+      background: #fffefa;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.45;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 11px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 10px;
+      color: var(--secondary);
+      background: #fffefa;
+      font-size: 12px;
+    }
+
+    .chip.active {
+      border-color: rgba(37, 99, 235, 0.25);
+      color: #1745a1;
+      background: var(--soft-blue);
+    }
+
+    .answer {
+      margin-top: 10px;
+      padding: 13px;
+    }
+
+    .answer h3,
+    .setting-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 680;
+    }
+
+    .answer p,
+    .setting-card p {
+      margin: 0 0 8px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .setting-card {
+      padding: 12px;
+    }
+
+    .path {
+      display: block;
+      overflow: hidden;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 11px;
+      color: var(--secondary);
+      background: #fffefa;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .screen-stack {
+      display: grid;
+      gap: 24px;
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <section class="intro">
+      <div>
+        <div class="eyebrow">gmind macOS app · design direction v4</div>
+        <h1>Quiet Intelligence</h1>
+      </div>
+      <p>
+        gmind 是一个安静的智能知识工具。界面保持小、轻、克制：
+        用户只负责提问，系统在背后整理资料并给出可信回答。
+      </p>
+    </section>
+
+    <section class="stage">
+      <aside>
+        <div class="label">Menu Bar</div>
+        <div class="popover">
+          <div class="popover-inner">
+            <div class="topline">
+              <div class="brand"><span class="mark"></span>gmind</div>
+              <div class="status"><span class="dot"></span>可提问</div>
+            </div>
+
+            <div class="summary">
+              <small>今日知识库</small>
+              <strong>已有资料可回答</strong>
+            </div>
+
+            <div class="metrics">
+              <div class="metric"><b>4</b><span>知识点</span></div>
+              <div class="metric"><b>8</b><span>事实</span></div>
+              <div class="metric"><b>3</b><span>来源</span></div>
+            </div>
+
+            <div class="button primary">问一下</div>
+            <div class="button">设置</div>
+          </div>
+          <div class="popover-footer">最近：项目 A 当前进展如何？</div>
+        </div>
+      </aside>
+
+      <section class="screen-stack">
+        <div>
+          <div class="label">Main Window · Ask · 520 × 390</div>
+          <div class="window">
+            <div class="traffic"><span></span><span></span><span></span></div>
+            <div class="shell">
+              <nav class="sidebar">
+                <p class="nav-title">gmind</p>
+                <div class="nav-item active">问一下</div>
+                <div class="nav-item">设置</div>
+              </nav>
+
+              <section class="main">
+                <header class="topbar">
+                  <h2>问一下</h2>
+                  <div class="status"><span class="dot"></span>可提问</div>
+                </header>
+
+                <div class="content">
+                  <div class="composer">
+                    <label class="field-label">你想知道什么？</label>
+                    <div class="question">项目 A 当前进展如何？还有什么需要跟进？</div>
+                    <div class="row">
+                      <span class="chip active">全部资料</span>
+                      <span class="chip">最近</span>
+                      <div class="button primary" style="width: 82px; margin-left: auto;">问一下</div>
+                    </div>
+                  </div>
+
+                  <article class="answer">
+                    <h3>回答</h3>
+                    <p>项目 A 已完成两个关键节点：2026-03-01 签署合同，2026-03-05 收到首付款。资料里暂未看到验收或尾款记录，建议下一步确认验收状态。</p>
+                    <div class="row">
+                      <span class="chip">2 条事实</span>
+                      <span class="chip">测试资料</span>
+                      <span class="chip">合同 · 首付款</span>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="label">Main Window · Settings · 520 × 390</div>
+          <div class="window">
+            <div class="traffic"><span></span><span></span><span></span></div>
+            <div class="shell">
+              <nav class="sidebar">
+                <p class="nav-title">gmind</p>
+                <div class="nav-item">问一下</div>
+                <div class="nav-item active">设置</div>
+              </nav>
+
+              <section class="main">
+                <header class="topbar">
+                  <h2>设置</h2>
+                  <div class="status"><span class="dot"></span>可使用</div>
+                </header>
+
+                <div class="content settings-grid">
+                  <div class="setting-card">
+                    <h3>AI 引擎</h3>
+                    <p>用于综合回答。密钥保存在 macOS Keychain，不写进配置文件。</p>
+                    <span class="path">••••••••••••••••••••••••••••</span>
+                    <div class="button primary" style="width: 74px; margin-top: 10px;">测试</div>
+                  </div>
+
+                  <div class="setting-card">
+                    <h3>知识库</h3>
+                    <p>保存资料、事实、事件和来源。</p>
+                    <span class="path">postgresql://••••••••@host/gmind_dev</span>
+                    <div class="button primary" style="width: 88px; margin-top: 10px;">测试连接</div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

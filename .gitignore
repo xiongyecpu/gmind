@@ -1,5 +1,8 @@
 .DS_Store
 .env
+gmind.toml
+.build/
+dist/
 .pytest_cache/
 .venv/
 __pycache__/
